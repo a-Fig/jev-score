@@ -1,7 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const main = $("#main");
-const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics" };
+const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics", compare: [] };
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options.headers } });
@@ -19,6 +19,73 @@ function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (char
 function score(value) { return value == null ? "—" : Number(value).toFixed(1); }
 function date(value) { return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)); }
 
+function safeMarkdownUrl(value, image = false) {
+  const decoded = value.replaceAll("&amp;", "&").replaceAll("&#39;", "'").replaceAll("&quot;", '"');
+  try {
+    const url = new URL(decoded, window.location.origin);
+    if (["http:", "https:"].includes(url.protocol) || (!image && url.protocol === "mailto:")) return value;
+  } catch {}
+  return null;
+}
+
+function markdownInline(value) {
+  const tokens = [];
+  const stash = (html) => { const token = `\u0000${tokens.length}\u0000`; tokens.push(html); return token; };
+  let output = String(value).replace(/`([^`\n]+)`/g, (_, code) => stash(`<code>${escapeHtml(code)}</code>`));
+  output = escapeHtml(output);
+  output = output.replace(/!\[([^\]]*)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (match, alt, url) => {
+    const safe = safeMarkdownUrl(url, true);
+    return safe ? stash(`<img src="${safe}" alt="${alt}" loading="lazy">`) : alt;
+  });
+  output = output.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (match, label, url) => {
+    const safe = safeMarkdownUrl(url);
+    return safe ? stash(`<a href="${safe}" target="_blank" rel="noreferrer">${label}</a>`) : label;
+  });
+  output = output.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  output = output.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+  return output.replace(/\u0000(\d+)\u0000/g, (_, index) => tokens[Number(index)]);
+}
+
+function markdownToHtml(markdown) {
+  const lines = String(markdown).replace(/\r\n?/g, "\n").split("\n");
+  const output = [];
+  let paragraph = [];
+  let list = null;
+  let inCode = false;
+  let codeLanguage = "";
+  let codeLines = [];
+  const flushParagraph = () => { if (paragraph.length) output.push(`<p>${markdownInline(paragraph.join(" "))}</p>`); paragraph = []; };
+  const flushList = () => { if (list) output.push(`<${list.type}>${list.items.map((item) => `<li>${markdownInline(item)}</li>`).join("")}</${list.type}>`); list = null; };
+  for (const line of lines) {
+    const fence = line.match(/^\s*```\s*([^\s`]*)/);
+    if (fence) {
+      flushParagraph(); flushList();
+      if (inCode) { output.push(`<pre><code${codeLanguage ? ` class="language-${escapeHtml(codeLanguage)}"` : ""}>${escapeHtml(codeLines.join("\n"))}</code></pre>`); codeLines = []; codeLanguage = ""; inCode = false; }
+      else { inCode = true; codeLanguage = fence[1] || ""; }
+      continue;
+    }
+    if (inCode) { codeLines.push(line); continue; }
+    if (!line.trim()) { flushParagraph(); flushList(); continue; }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    const unordered = line.match(/^\s*[-*+]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    const quote = line.match(/^>\s?(.*)$/);
+    if (heading) { flushParagraph(); flushList(); const level = heading[1].length; output.push(`<h${level}>${markdownInline(heading[2])}</h${level}>`); }
+    else if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) { flushParagraph(); flushList(); output.push("<hr>"); }
+    else if (unordered || ordered) {
+      flushParagraph();
+      const type = unordered ? "ul" : "ol";
+      if (list && list.type !== type) flushList();
+      if (!list) list = { type, items: [] };
+      list.items.push((unordered || ordered)[1]);
+    } else if (quote) { flushParagraph(); flushList(); output.push(`<blockquote>${markdownInline(quote[1])}</blockquote>`); }
+    else { flushList(); paragraph.push(line.trim()); }
+  }
+  if (inCode) output.push(`<pre><code${codeLanguage ? ` class="language-${escapeHtml(codeLanguage)}"` : ""}>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+  flushParagraph(); flushList();
+  return output.join("\n");
+}
+
 async function loadDashboard() {
   state.dashboard = await api("/api/dashboard");
   $("#workspace-list").innerHTML = state.dashboard.workspaces.map((workspace) => `<button class="workspace-link ${state.workspace?.workspace.id === workspace.id ? "active" : ""}" data-id="${workspace.id}">${escapeHtml(workspace.name)}</button>`).join("");
@@ -28,6 +95,7 @@ async function loadDashboard() {
 }
 
 async function openWorkspace(id, overrides = {}) {
+  if (state.workspace?.workspace.id !== id) state.compare = [];
   state.group = overrides.group ?? state.group;
   state.question = overrides.question ?? state.question;
   state.mode = overrides.mode ?? state.mode;
@@ -42,6 +110,7 @@ async function openWorkspace(id, overrides = {}) {
 }
 
 function renderEmpty() {
+  state.compare = []; renderCompareTray();
   main.innerHTML = `<section class="empty"><p class="eyebrow">Local evaluation workspace</p><h1>Make every revision measurable.</h1><p>Keep context, drafts, Jev evaluations, and progress together. Your documents stay in a local SQLite database.</p><button class="primary" id="empty-new">Create your first workspace</button><div class="empty-card"><strong>Built for you and your coding agent</strong><span class="subtle">Everything in this interface is also available through the CLI.</span><p><code>jev-score ui</code> · <code>jev-score --help</code></p></div></section>`;
   $("#empty-new").onclick = () => $("#workspace-dialog").showModal();
 }
@@ -63,8 +132,34 @@ function documentName(document) {
   return `<div class="doc-title">${escapeHtml(document.title)} ${document.isOriginal ? `<span class="badge original">Original</span>` : ""} ${document.isBest ? `<span class="badge best">Best</span>` : ""}</div><div class="doc-summary">${escapeHtml(document.changeSummary || date(document.createdAt))}</div>`;
 }
 
-function documentActions(workspace, document, canEvaluate) {
-  return `<div class="row-actions"><button data-view="${document.id}">View</button><a href="/api/workspaces/${workspace.id}/documents/${document.id}?download">Download</a>${canEvaluate ? `<button data-evaluate="${document.id}">Evaluate</button>` : ""}</div>`;
+function compareButton(document, className = "") {
+  const selected = state.compare.includes(document.id);
+  return `<button data-compare="${document.id}" class="${className} ${selected ? "selected" : ""}">${selected ? "Selected" : "Compare"}</button>`;
+}
+
+function documentActions(workspace, document, canEvaluate, includeCompare = true) {
+  return `<div class="row-actions"><button data-view="${document.id}">View</button>${includeCompare ? compareButton(document) : ""}<a href="/api/workspaces/${workspace.id}/documents/${document.id}?download">Download</a>${canEvaluate ? `<button data-evaluate="${document.id}">Evaluate</button>` : ""}</div>`;
+}
+
+function toggleCompare(documentId) {
+  if (state.compare.includes(documentId)) state.compare = state.compare.filter((id) => id !== documentId);
+  else if (state.compare.length < 2) state.compare.push(documentId);
+  else { toast("Comparison already has two documents"); return; }
+  if (state.workspace) renderWorkspace();
+  else renderCompareTray();
+}
+
+function renderCompareTray() {
+  const tray = $("#compare-tray");
+  const documents = state.workspace?.documents || [];
+  state.compare = state.compare.filter((id) => documents.some((document) => document.id === id));
+  if (!state.compare.length) { tray.innerHTML = ""; tray.className = ""; return; }
+  const selected = state.compare.map((id) => documents.find((document) => document.id === id)).filter(Boolean);
+  tray.className = "show";
+  tray.innerHTML = `<div class="compare-selection"><span class="compare-label">Compare</span>${selected.map((document) => `<span class="compare-chip">${escapeHtml(document.title)}<button data-remove-compare="${document.id}" aria-label="Remove ${escapeHtml(document.title)}">×</button></span>`).join("")}${selected.length === 1 ? `<span class="compare-hint">Choose one more</span>` : ""}</div><div class="compare-tray-actions"><button class="ghost" id="clear-compare">Clear</button><button class="primary" id="open-compare" ${selected.length < 2 ? "disabled" : ""}>Compare ${selected.length}/2</button></div>`;
+  $$('[data-remove-compare]', tray).forEach((button) => button.onclick = () => toggleCompare(button.dataset.removeCompare));
+  $("#clear-compare", tray).onclick = () => { state.compare = []; renderWorkspace(); };
+  $("#open-compare", tray).onclick = openComparison;
 }
 
 function rankingTable(workspace, documents, canEvaluate) {
@@ -74,7 +169,7 @@ function rankingTable(workspace, documents, canEvaluate) {
 
 function metricsTable(workspace, matrix, canEvaluate) {
   if (!matrix?.rows.length) return `<div class="chart-empty">Add the original document to begin.</div>`;
-  return `<div class="table-scroll"><table class="matrix-table"><thead><tr><th>Document</th><th>Overall</th>${matrix.questions.map((question) => `<th title="${escapeHtml(question.text)}">${escapeHtml(question.text)}</th>`).join("")}<th>Runs</th><th></th></tr></thead><tbody>${matrix.rows.map((document) => `<tr><td>${documentName(document)}</td><td class="score">${score(document.overallScore)}</td>${matrix.questions.map((question) => `<td>${score(document.scores[question.key])}</td>`).join("")}<td>${document.runs}</td><td>${documentActions(workspace, document, canEvaluate)}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-scroll"><table class="matrix-table"><thead><tr><th>Document</th><th>Overall</th>${matrix.questions.map((question) => `<th title="${escapeHtml(question.text)}">${escapeHtml(question.text)}</th>`).join("")}<th>Runs</th><th></th></tr></thead><tbody>${matrix.rows.map((document) => `<tr><td>${documentName(document)}${compareButton(document, "inline-compare")}</td><td class="score">${score(document.overallScore)}</td>${matrix.questions.map((question) => `<td>${score(document.scores[question.key])}</td>`).join("")}<td>${document.runs}</td><td>${documentActions(workspace, document, canEvaluate, false)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderWorkspace() {
@@ -100,15 +195,17 @@ function renderWorkspace() {
       ${state.tableView === "metrics" && matrix ? metricsTable(workspace, matrix, Boolean(active)) : rankingTable(workspace, ranked, Boolean(active))}</article>
   </section>`;
   $("#upload").onclick = () => openUpload(documents);
-  $("#delete-workspace").onclick = async () => { if (confirm(`Delete “${workspace.name}” and every document and score inside it?`)) { await api(`/api/workspaces/${workspace.id}`, { method: "DELETE" }); state.workspace = null; state.group = null; state.question = ""; state.mode = null; await loadDashboard(); state.dashboard.workspaces.length ? openWorkspace(state.dashboard.workspaces[0].id) : renderEmpty(); } };
+  $("#delete-workspace").onclick = async () => { if (confirm(`Delete “${workspace.name}” and every document and score inside it?`)) { await api(`/api/workspaces/${workspace.id}`, { method: "DELETE" }); state.workspace = null; state.group = null; state.question = ""; state.mode = null; state.compare = []; await loadDashboard(); state.dashboard.workspaces.length ? openWorkspace(state.dashboard.workspaces[0].id) : renderEmpty(); } };
   $("#workspace-new-group")?.addEventListener("click", () => $("#group-dialog").showModal());
   $("#group-select")?.addEventListener("change", async (event) => { state.question = ""; await api(`/api/workspaces/${workspace.id}`, { method: "PATCH", body: JSON.stringify({ primaryGroup: event.target.value }) }); openWorkspace(workspace.id, { group: event.target.value }); });
   $("#metric-select")?.addEventListener("change", (event) => openWorkspace(workspace.id, { question: event.target.value }));
   $$("[data-mode]").forEach((button) => button.onclick = async () => { await api(`/api/workspaces/${workspace.id}`, { method: "PATCH", body: JSON.stringify({ rankingMode: button.dataset.mode }) }); openWorkspace(workspace.id, { mode: button.dataset.mode }); });
   $("#attach-select")?.addEventListener("change", async (event) => { if (!event.target.value) return; await api(`/api/workspaces/${workspace.id}/groups`, { method: "POST", body: JSON.stringify({ group: event.target.value }) }); await api(`/api/workspaces/${workspace.id}`, { method: "PATCH", body: JSON.stringify({ primaryGroup: event.target.value }) }); state.question = ""; openWorkspace(workspace.id, { group: event.target.value }); });
   $$('[data-view]').forEach((button) => button.onclick = () => viewDocument(workspace.id, button.dataset.view));
+  $$('[data-compare]').forEach((button) => button.onclick = () => toggleCompare(button.dataset.compare));
   $$('[data-evaluate]').forEach((button) => button.onclick = () => evaluate(workspace.id, button.dataset.evaluate, button));
   $$('[data-table-view]').forEach((button) => button.onclick = () => { state.tableView = button.dataset.tableView; renderWorkspace(); });
+  renderCompareTray();
 }
 
 async function evaluate(workspaceId, documentId, button) {
@@ -124,15 +221,63 @@ function openUpload(documents) {
   $("#document-dialog").showModal();
 }
 
+function comparisonScoreRows(leftId, rightId) {
+  const matrix = state.workspace?.matrix;
+  if (!matrix) return `<div class="chart-empty compare-empty">Attach an evaluation group to compare scores.</div>`;
+  const left = matrix.rows.find((row) => row.id === leftId);
+  const right = matrix.rows.find((row) => row.id === rightId);
+  const rows = [
+    { label: "Overall", left: left?.overallScore, right: right?.overallScore, overall: true },
+    ...matrix.questions.map((question) => ({ label: question.text, left: left?.scores[question.key], right: right?.scores[question.key] })),
+  ];
+  return `<div class="compare-score-scroll"><table class="compare-scores"><thead><tr><th>Metric</th><th>${escapeHtml(left?.title || "Left")}</th><th>${escapeHtml(right?.title || "Right")}</th><th>Δ</th></tr></thead><tbody>${rows.map((row) => {
+    const delta = row.left == null || row.right == null ? null : Number(row.right) - Number(row.left);
+    return `<tr class="${row.overall ? "overall-row" : ""}"><td>${escapeHtml(row.label)}</td><td>${score(row.left)}</td><td>${score(row.right)}</td><td class="${delta > 0 ? "delta" : delta < 0 ? "negative" : ""}">${delta == null ? "—" : `${delta > 0 ? "+" : ""}${score(delta)}`}</td></tr>`;
+  }).join("")}</tbody></table></div>`;
+}
+
+async function openComparison() {
+  if (state.compare.length !== 2 || !state.workspace) return;
+  const workspace = state.workspace.workspace;
+  try {
+    const [left, right] = await Promise.all(state.compare.map((id) => api(`/api/workspaces/${workspace.id}/documents/${id}`)));
+    const options = (selectedId) => state.workspace.documents.map((document) => `<option value="${document.id}" ${document.id === selectedId ? "selected" : ""}>${escapeHtml(document.title)}</option>`).join("");
+    $("#comparison").innerHTML = `<div class="comparison-shell">
+      <div class="comparison-top"><div><p class="eyebrow">Document comparison</p><h2>Compare drafts</h2><p class="subtle">${escapeHtml(state.workspace.matrix?.group.name || "Scores unavailable")} · ${state.mode === "median" ? "median" : "highest"} scores</p></div><div class="viewer-actions"><button class="ghost" id="swap-comparison">Swap</button><button class="icon" id="close-comparison" aria-label="Close">×</button></div></div>
+      <div class="compare-pickers"><label>Left document<select data-compare-picker="0">${options(left.id)}</select></label><label>Right document<select data-compare-picker="1">${options(right.id)}</select></label></div>
+      <section class="comparison-section"><div class="comparison-section-title"><h3>Scores</h3><span class="subtle">Δ shows right minus left</span></div>${comparisonScoreRows(left.id, right.id)}</section>
+      <section class="comparison-section"><div class="comparison-section-title"><h3>Documents</h3><span class="subtle">Rendered Markdown</span></div><div class="compare-documents"><article><header><strong>${escapeHtml(left.title)}</strong><a href="/api/workspaces/${workspace.id}/documents/${left.id}?download">Download</a></header><div class="markdown-body">${markdownToHtml(left.content)}</div></article><article><header><strong>${escapeHtml(right.title)}</strong><a href="/api/workspaces/${workspace.id}/documents/${right.id}?download">Download</a></header><div class="markdown-body">${markdownToHtml(right.content)}</div></article></div></section>
+    </div>`;
+    $("#close-comparison").onclick = () => $("#compare-dialog").close();
+    $("#swap-comparison").onclick = () => { state.compare.reverse(); openComparison(); renderCompareTray(); };
+    $$('[data-compare-picker]', $("#comparison")).forEach((select) => select.onchange = () => {
+      const index = Number(select.dataset.comparePicker);
+      if (state.compare[1 - index] === select.value) { toast("Choose two different documents"); select.value = state.compare[index]; return; }
+      state.compare[index] = select.value; openComparison(); renderWorkspace();
+    });
+    if (!$("#compare-dialog").open) $("#compare-dialog").showModal();
+  } catch (error) { toast(error.message, true); }
+}
+
 async function viewDocument(workspaceId, documentId) {
   const document = await api(`/api/workspaces/${workspaceId}/documents/${documentId}`);
   const history = document.runs.length ? document.runs.map((run) => `<article class="run-card"><div class="run-head"><div><strong>${escapeHtml(run.groupName)}</strong><span class="subtle">${date(run.createdAt)} · ${escapeHtml(run.model || run.status)}</span></div><span class="score">${score(run.overallScore)}</span></div>${run.error || run.aggregationError ? `<p class="run-error">${escapeHtml(run.error || run.aggregationError)}</p>` : ""}${run.scores.length ? `<div class="score-list">${run.scores.map((item)=>`<div><span>${escapeHtml(item.text)}</span><strong>${score(item.score)}</strong></div>`).join("")}</div>` : ""}</article>`).join("") : `<p class="subtle">No evaluation runs yet.</p>`;
-  $("#viewer").innerHTML = `<div class="viewer-shell"><div class="viewer-top"><div><p class="eyebrow">${document.isOriginal ? "Original" : "Revision"}</p><h2>${escapeHtml(document.title)}</h2><p class="subtle">${escapeHtml(document.changeSummary || date(document.createdAt))}</p></div><div class="viewer-actions"><a class="ghost" href="/api/workspaces/${workspaceId}/documents/${documentId}?download">Download</a><button class="icon" id="close-viewer">×</button></div></div><pre class="viewer-content">${escapeHtml(document.content)}</pre><h3 class="history-title">Evaluation history</h3><div class="run-list">${history}</div></div>`;
+  const renderDocument = (mode) => {
+    const content = $("#document-content");
+    content.className = mode === "rendered" ? "document-body markdown-body" : "document-body source-body";
+    content.innerHTML = mode === "rendered" ? markdownToHtml(document.content) : `<pre>${escapeHtml(document.content)}</pre>`;
+    $$('[data-document-mode]', $("#viewer")).forEach((button) => button.classList.toggle("active", button.dataset.documentMode === mode));
+  };
+  const selected = state.compare.includes(documentId);
+  $("#viewer").innerHTML = `<div class="viewer-shell"><div class="viewer-top"><div><p class="eyebrow">${document.isOriginal ? "Original" : "Revision"}</p><h2>${escapeHtml(document.title)}</h2><p class="subtle">${escapeHtml(document.changeSummary || date(document.createdAt))}</p></div><div class="viewer-actions"><button class="ghost ${selected ? "selected" : ""}" id="viewer-compare">${selected ? "Selected" : "Compare"}</button><a class="ghost" href="/api/workspaces/${workspaceId}/documents/${documentId}?download">Download</a><button class="icon" id="close-viewer">×</button></div></div><div class="document-mode"><div class="segmented"><button data-document-mode="rendered" class="active">Rendered</button><button data-document-mode="source">Source</button></div></div><div id="document-content"></div><h3 class="history-title">Evaluation history</h3><div class="run-list">${history}</div></div>`;
+  renderDocument("rendered");
+  $$('[data-document-mode]', $("#viewer")).forEach((button) => button.onclick = () => renderDocument(button.dataset.documentMode));
+  $("#viewer-compare").onclick = () => { toggleCompare(documentId); const isSelected = state.compare.includes(documentId); $("#viewer-compare").textContent = isSelected ? "Selected" : "Compare"; $("#viewer-compare").classList.toggle("selected", isSelected); };
   $("#close-viewer").onclick = () => $("#viewer-dialog").close(); $("#viewer-dialog").showModal();
 }
 
 function renderGroups() {
-  state.workspace = null; loadDashboard().then(() => {
+  state.workspace = null; state.compare = []; renderCompareTray(); loadDashboard().then(() => {
     main.innerHTML = `<section class="groups-page"><div class="topbar"><div><p class="eyebrow">Library</p><h1>Evaluation groups</h1><p class="subtle">Reusable questions that can be attached to any workspace.</p></div><button class="primary" id="new-group">＋ New group</button></div><div class="groups-list">${state.dashboard.groups.map((group)=>`<article class="group-card"><header><div><h3>${escapeHtml(group.name)}</h3><span class="subtle">${group.questions.length} question${group.questions.length === 1 ? "" : "s"} · ${group.scorerKind === "mean-v1" ? "Arithmetic mean" : "Custom JavaScript scorer"}${group.locked ? " · Locked after first run" : ""}</span></div><div class="row-actions"><button data-rename-group="${group.id}">Rename</button><button class="danger" data-delete-group="${group.id}">Delete</button></div></header>${group.description ? `<p>${escapeHtml(group.description)}</p>` : ""}<ol class="questions">${group.questions.map((question)=>`<li>${escapeHtml(question.text)} <span class="subtle">${question.key}</span></li>`).join("")}</ol></article>`).join("") || `<div class="empty-card">No groups yet.</div>`}</div></section>`;
     $("#new-group").onclick = () => $("#group-dialog").showModal();
     $$('[data-rename-group]').forEach((button)=>button.onclick=async()=>{ const group=state.dashboard.groups.find((g)=>g.id===button.dataset.renameGroup); const name=prompt("Evaluation group name",group.name); if(name?.trim() && name.trim() !== group.name){ await api(`/api/groups/${group.id}`,{method:"PATCH",body:JSON.stringify({name:name.trim()})}); toast("Evaluation group renamed"); renderGroups(); }});
