@@ -5,7 +5,8 @@ const round = (value) => Math.round(value * 10) / 10;
 export async function aggregateScores(group, scores, timeoutMs = 3_000) {
   if (!scores.length || scores.some((item) => !Number.isFinite(item.score) || item.score < 0 || item.score > 100)) throw new Error("Question scores must be finite numbers from 0 to 100.");
   if (group.scorerKind === "mean-v1") {
-    return round(scores.reduce((sum, item) => sum + item.score, 0) / scores.length);
+    const directions = new Map((group.questions || []).map((question) => [question.key, question.direction]));
+    return round(scores.reduce((sum, item) => sum + (directions.get(item.key) === "lower" ? 100 - item.score : item.score), 0) / scores.length);
   }
   if (group.scorerKind !== "javascript-v1" || !group.scorerSource) throw new Error(`Unsupported scorer: ${group.scorerKind}`);
   const scoreMap = Object.fromEntries(scores.map((item) => [item.key, item.score]));

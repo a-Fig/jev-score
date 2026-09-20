@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS evaluation_questions (
   group_id TEXT NOT NULL REFERENCES evaluation_groups(id) ON DELETE CASCADE,
   question_key TEXT NOT NULL,
   text TEXT NOT NULL,
+  direction TEXT NOT NULL DEFAULT 'higher' CHECK (direction IN ('higher', 'lower')),
   position INTEGER NOT NULL,
   UNIQUE (group_id, question_key)
 );
@@ -95,14 +96,28 @@ CREATE TABLE IF NOT EXISTS evaluation_scores (
   PRIMARY KEY (run_id, question_id)
 );
 
-PRAGMA user_version = 1;
 `;
+
+function migrate(db) {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const questionColumns = db.prepare("PRAGMA table_info(evaluation_questions)").all();
+    if (!questionColumns.some((column) => column.name === "direction")) {
+      db.exec("ALTER TABLE evaluation_questions ADD COLUMN direction TEXT NOT NULL DEFAULT 'higher' CHECK (direction IN ('higher', 'lower'))");
+    }
+    db.exec("PRAGMA user_version = 2; COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
 
 export function openDatabase(path = databasePath()) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
   db.exec(schema);
+  migrate(db);
   return db;
 }
 

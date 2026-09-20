@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "../src/db.mjs";
 import { addDocument, createGroup, createWorkspace, deleteGroup, documentDetail, evaluateDocument, listDocuments, ranking, resolveGroup, scoreMatrix, usageSummary } from "../src/service.mjs";
 
@@ -10,6 +11,19 @@ const temporary = [];
 afterEach(() => { while (temporary.length) rmSync(temporary.pop(), { recursive: true, force: true }); });
 function database() { const directory = mkdtempSync(join(tmpdir(), "jev-score-")); temporary.push(directory); return openDatabase(join(directory, "test.db")); }
 function evaluator(values) { return async ({ questions }) => ({ model: "fake", provider: "test", usage: null, scores: questions.map((question, index) => ({ questionId: question.id, key: question.key, text: question.text, rawScore: values[index] / 25, score: values[index], confidence: 1, probabilities: null })) }); }
+
+test("existing databases migrate questions to higher-is-better", () => {
+  const directory = mkdtempSync(join(tmpdir(), "jev-score-legacy-"));
+  temporary.push(directory);
+  const path = join(directory, "legacy.db");
+  const legacy = new DatabaseSync(path);
+  legacy.exec(`CREATE TABLE evaluation_questions (id TEXT PRIMARY KEY, group_id TEXT NOT NULL, question_key TEXT NOT NULL, text TEXT NOT NULL, position INTEGER NOT NULL, UNIQUE (group_id, question_key)); INSERT INTO evaluation_questions VALUES ('q_1','g_1','clarity','Clarity',0); PRAGMA user_version = 1;`);
+  legacy.close();
+  const db = openDatabase(path);
+  assert.equal(db.prepare("SELECT direction FROM evaluation_questions").get().direction, "higher");
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 2);
+  db.close();
+});
 
 test("documents deduplicate by normalized content while every evaluation is retained", async () => {
   const db = database();
@@ -55,10 +69,30 @@ test("max and median modes select different best documents", async () => {
   ]); db.close();
 });
 
+test("lower-is-better questions invert the default mean and ranking direction", async () => {
+  const db = database();
+  assert.throws(() => createGroup(db, { name: "Invalid", questions: [{ text: "Risk", direction: "sideways" }] }), /direction must be higher or lower/i);
+  const group = createGroup(db, { name: "Balanced", questions: [{ key: "clarity", text: "Clarity", direction: "higher" }, { key: "risk", text: "Red flags", direction: "lower" }] });
+  assert.deepEqual(group.questions.map(({ key, direction }) => ({ key, direction })), [{ key: "clarity", direction: "higher" }, { key: "risk", direction: "lower" }]);
+  const workspace = createWorkspace(db, { name: "Role", contextContent: "Context", primaryGroup: group.id });
+  const original = addDocument(db, workspace.id, { title: "Original", content: "A" });
+  const revision = addDocument(db, workspace.id, { title: "Revision", content: "B" });
+  assert.equal((await evaluateDocument(db, workspace.id, original.id, { evaluate: evaluator([80, 40]) })).overallScore, 70);
+  assert.equal((await evaluateDocument(db, workspace.id, revision.id, { evaluate: evaluator([75, 10]) })).overallScore, 82.5);
+  await evaluateDocument(db, workspace.id, revision.id, { evaluate: evaluator([75, 20]) });
+  const result = ranking(db, workspace.id, { question: "risk", mode: "max" });
+  assert.equal(result.items[0].title, "Revision");
+  assert.equal(result.items[0].rankScore, 10);
+  assert.equal(result.items[0].delta, 30);
+  assert.deepEqual(result.timeline[1], { documentId: revision.id, documentVersion: 1, documentTitle: "Revision", runs: 2, delta: 30, minDelta: 20, maxDelta: 30, frontier: 30 });
+  assert.equal(scoreMatrix(db, workspace.id, { mode: "max" }).rows.find((row) => row.id === revision.id).scores.risk, 10);
+  db.close();
+});
+
 test("custom scorers can invert lower-is-better questions and group deletion cascades runs", async () => {
   const db = database();
   const source = `export default function score(scores) { return (scores.fit + (100 - scores.red_flags)) / 2; }`;
-  const group = createGroup(db, { name: "Hiring", questions: [{ key: "fit", text: "Fit" }, { key: "red_flags", text: "Red flags" }], scorerSource: source });
+  const group = createGroup(db, { name: "Hiring", questions: [{ key: "fit", text: "Fit", direction: "higher" }, { key: "red_flags", text: "Red flags", direction: "lower" }], scorerSource: source });
   const workspace = createWorkspace(db, { name: "Job", contextContent: "Context", primaryGroup: group.id });
   const document = addDocument(db, workspace.id, { title: "Resume", content: "Text" });
   const run = await evaluateDocument(db, workspace.id, document.id, { evaluate: evaluator([80, 10]) });

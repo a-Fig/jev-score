@@ -1,6 +1,6 @@
 # Custom overall scorers
 
-An evaluation group normally averages its normalized 0–100 question scores. A custom scorer lets a group use weights, invert a lower-is-better question, or apply another small formula.
+An evaluation group normally computes a direction-aware mean of its normalized 0–100 question scores. Higher-is-better scores are used directly; lower-is-better scores become `100 - score` before averaging. A custom scorer lets a group use weights or apply another small formula.
 
 Create a JavaScript module with one default function:
 
@@ -10,7 +10,7 @@ export default function score(scores) {
 }
 ```
 
-`scores` maps each stable question key to its normalized 0–100 value. The function must return a finite number from 0 through 100 synchronously. It cannot accept additional arguments.
+`scores` maps each stable question key to its raw normalized 0–100 value. The function must return a finite number from 0 through 100 synchronously. It cannot accept additional arguments. A custom scorer replaces the automatic direction-aware mean, so invert lower-is-better values in the formula when needed.
 
 Pass the file when the group is created:
 

@@ -39,7 +39,9 @@ Usage:
   jev-score serve [--port <port>]   Run the local app without opening a browser
   jev-score db path | reset --yes
 
-Question files may be a JSON array or one question per line. Names or IDs work as references.
+Question files may be a JSON array or one question per line. Prefix a line with [lower]
+when a lower score is better; all other questions default to higher-is-better.
+Names or IDs work as references.
 The CLI loads .env and .env.local from the current directory. Set OPENROUTER_API_KEY to evaluate.
 `);
 }
@@ -71,7 +73,10 @@ async function questionsFrom(path) {
     if (!Array.isArray(value)) throw new Error("Question JSON must be an array.");
     return value;
   }
-  return text.split(/\r?\n/).map((line) => line.replace(/^\s*[-*]\s*/, "").trim()).filter(Boolean);
+  return text.split(/\r?\n/).map((line) => line.replace(/^\s*[-*]\s*/, "").trim()).filter(Boolean).map((line) => {
+    const lower = line.match(/^\[(?:lower|low)\]\s*(.+)$/i);
+    return { text: lower ? lower[1].trim() : line, direction: lower ? "lower" : "higher" };
+  });
 }
 
 async function openBrowser(url) {

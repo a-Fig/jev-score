@@ -89,6 +89,8 @@ jev-score --help
 
 An **evaluation group** is a reusable set of questions. A **workspace** combines one context with documents and evaluation history.
 
+Each question has a direction. Higher is better by default; prefix a line in a text question file with `[lower]` for metrics such as red flags or error count. JSON question files can set `"direction": "higher"` or `"direction": "lower"`. The default overall score averages higher scores with `100 - score` for lower-is-better questions.
+
 ```bash
 # 1. Define what a good resume means
 jev-score group create \
@@ -122,7 +124,8 @@ jev-score ui
 - **Progress.** See improvement from the original, the best-so-far frontier, highest and median rankings, ranges, and run counts.
 - **Usage.** See locally recorded Jev token counts and OpenRouter costs in Settings or with `jev-score usage`.
 - **Reusable rubrics.** Attach the same evaluation group to many workspaces and switch the primary group at any time.
-- **Custom overall scores.** Weight criteria or invert lower-is-better questions with a small JavaScript scorer.
+- **Metric direction.** Mark each question as higher-is-better or lower-is-better; rankings, highlights, and the default overall score follow that direction.
+- **Custom overall scores.** Weight criteria or define another formula with a small JavaScript scorer.
 
 The CLI and UI operate on the same SQLite database. An agent can add and score a revision while the browser is open; refresh and it is there.
 

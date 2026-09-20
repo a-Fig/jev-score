@@ -26,6 +26,8 @@ function uniqueKeys(questions) {
     if (typeof entry !== "string" && (typeof entry !== "object" || entry === null || typeof entry.text !== "string")) throw new Error(`Question ${index + 1} must be text or an object with text.`);
     const text = typeof entry === "string" ? entry.trim() : entry.text.trim();
     if (!text) throw new Error(`Question ${index + 1} is empty.`);
+    const direction = typeof entry === "object" && entry.direction != null ? String(entry.direction).trim().toLowerCase() : "higher";
+    if (!["higher", "lower"].includes(direction)) throw new Error(`Question ${index + 1} direction must be higher or lower.`);
     let key = typeof entry === "object" && entry.key
       ? String(entry.key).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-")
       : text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42);
@@ -34,13 +36,13 @@ function uniqueKeys(questions) {
     let suffix = 2;
     while (used.has(key)) key = `${base}-${suffix++}`;
     used.add(key);
-    return { key, text };
+    return { key, text, direction };
   });
 }
 
 function groupFromRow(db, row) {
   if (!row) return null;
-  const questions = db.prepare(`SELECT id, question_key AS key, text, position FROM evaluation_questions WHERE group_id = ? ORDER BY position`).all(row.id);
+  const questions = db.prepare(`SELECT id, question_key AS key, text, direction, position FROM evaluation_questions WHERE group_id = ? ORDER BY position`).all(row.id);
   return {
     id: row.id, name: row.name, description: row.description,
     scorerKind: row.scorer_kind, scorerSource: row.scorer_source, scorerHash: row.scorer_hash,
@@ -69,8 +71,8 @@ export function createGroup(db, { name, description = "", questions, scorerSourc
   inTransaction(db, () => {
     db.prepare(`INSERT INTO evaluation_groups (id,name,description,scorer_kind,scorer_source,scorer_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
       .run(groupId, String(name).trim(), String(description), source ? "javascript-v1" : "mean-v1", source, source ? hash(source) : null, timestamp, timestamp);
-    const insert = db.prepare(`INSERT INTO evaluation_questions (id,group_id,question_key,text,position) VALUES (?,?,?,?,?)`);
-    cleanQuestions.forEach((question, index) => insert.run(id("q"), groupId, question.key, question.text, index));
+    const insert = db.prepare(`INSERT INTO evaluation_questions (id,group_id,question_key,text,direction,position) VALUES (?,?,?,?,?,?)`);
+    cleanQuestions.forEach((question, index) => insert.run(id("q"), groupId, question.key, question.text, question.direction, index));
   });
   return resolveGroup(db, groupId);
 }
@@ -233,7 +235,7 @@ export async function evaluateDocument(db, workspaceRef, documentRef, { group: g
 export function getRun(db, runId) {
   const row = db.prepare(`SELECT r.*, d.title document_title, g.name group_name FROM evaluation_runs r JOIN documents d ON d.id=r.document_id JOIN evaluation_groups g ON g.id=r.group_id WHERE r.id=?`).get(runId);
   if (!row) throw new Error(`Evaluation run not found: ${runId}`);
-  const scores = db.prepare(`SELECT q.question_key key,q.text,s.raw_score rawScore,s.normalized_score score,s.confidence,s.probabilities_json probabilities FROM evaluation_scores s JOIN evaluation_questions q ON q.id=s.question_id WHERE s.run_id=? ORDER BY q.position`).all(runId)
+  const scores = db.prepare(`SELECT q.question_key key,q.text,q.direction,s.raw_score rawScore,s.normalized_score score,s.confidence,s.probabilities_json probabilities FROM evaluation_scores s JOIN evaluation_questions q ON q.id=s.question_id WHERE s.run_id=? ORDER BY q.position`).all(runId)
     .map((score) => ({ ...score, probabilities: parseJson(score.probabilities) }));
   return {
     id: row.id, workspaceId: row.workspace_id, documentId: row.document_id, documentTitle: row.document_title,
@@ -258,6 +260,7 @@ export function ranking(db, workspaceRef, { group: groupRef = null, question = n
     ? db.prepare(`SELECT r.id run_id,r.document_id,r.created_at,s.normalized_score value FROM evaluation_runs r JOIN evaluation_scores s ON s.run_id=r.id WHERE r.workspace_id=? AND r.group_id=? AND s.question_id=?`).all(workspace.id, group.id, questionInfo.id)
     : db.prepare(`SELECT id run_id,document_id,created_at,overall_score value FROM evaluation_runs WHERE workspace_id=? AND group_id=? AND status='success' AND overall_score IS NOT NULL`).all(workspace.id, group.id);
   const documents = listDocuments(db, workspace.id);
+  const lowerIsBetter = questionInfo?.direction === "lower";
   const byDocument = new Map();
   rows.forEach((row) => {
     if (!byDocument.has(row.document_id)) byDocument.set(row.document_id, []);
@@ -269,20 +272,23 @@ export function ranking(db, workspaceRef, { group: groupRef = null, question = n
     const min = Math.min(...values);
     const max = Math.max(...values);
     const middle = median(values);
-    return { ...document, runs: values.length, min: round(min), max: round(max), median: round(middle), spread: round(max - min), rankScore: round(rankingMode === "max" ? max : middle) };
-  }).sort((a, b) => (b.rankScore ?? -Infinity) - (a.rankScore ?? -Infinity) || a.createdAt.localeCompare(b.createdAt));
+    return { ...document, runs: values.length, min: round(min), max: round(max), median: round(middle), spread: round(max - min), rankScore: round(rankingMode === "max" ? (lowerIsBetter ? min : max) : middle) };
+  }).sort((a, b) => lowerIsBetter
+    ? (a.rankScore ?? Infinity) - (b.rankScore ?? Infinity) || a.createdAt.localeCompare(b.createdAt)
+    : (b.rankScore ?? -Infinity) - (a.rankScore ?? -Infinity) || a.createdAt.localeCompare(b.createdAt));
   const best = items.find((item) => item.rankScore != null);
   const original = items.find((item) => item.isOriginal);
-  items.forEach((item, index) => { item.rank = item.rankScore == null ? null : index + 1; item.isBest = item.id === best?.id; item.delta = item.rankScore == null || original?.rankScore == null ? null : round(item.rankScore - original.rankScore); });
+  const improvement = (value, baseline) => lowerIsBetter ? baseline - value : value - baseline;
+  items.forEach((item, index) => { item.rank = item.rankScore == null ? null : index + 1; item.isBest = item.id === best?.id; item.delta = item.rankScore == null || original?.rankScore == null ? null : round(improvement(item.rankScore, original.rankScore)); });
   const originalBaseline = original?.rankScore ?? null;
   let frontier = -Infinity;
   const timeline = [...items]
     .filter((item) => item.rankScore != null)
     .sort((a, b) => a.version - b.version)
     .map((item) => {
-      const delta = originalBaseline == null ? null : round(item.rankScore - originalBaseline);
-      const minDelta = originalBaseline == null ? null : round(item.min - originalBaseline);
-      const maxDelta = originalBaseline == null ? null : round(item.max - originalBaseline);
+      const delta = originalBaseline == null ? null : round(improvement(item.rankScore, originalBaseline));
+      const minDelta = originalBaseline == null ? null : round(lowerIsBetter ? improvement(item.max, originalBaseline) : improvement(item.min, originalBaseline));
+      const maxDelta = originalBaseline == null ? null : round(lowerIsBetter ? improvement(item.min, originalBaseline) : improvement(item.max, originalBaseline));
       frontier = Math.max(frontier, delta ?? item.rankScore);
       return {
         documentId: item.id, documentVersion: item.version, documentTitle: item.title,
@@ -309,14 +315,14 @@ export function scoreMatrix(db, workspaceRef, { group: groupRef = null, mode = n
     if (!questions.has(row.question_key)) questions.set(row.question_key, []);
     questions.get(row.question_key).push(Number(row.normalized_score));
   });
-  const pick = (items) => items.length ? round(rankingMode === "max" ? Math.max(...items) : median(items)) : null;
+  const pick = (items, direction = "higher") => items.length ? round(rankingMode === "max" ? (direction === "lower" ? Math.min(...items) : Math.max(...items)) : median(items)) : null;
   const rows = documents.map((document) => {
     const entry = values.get(document.id);
     return {
       ...document,
       runs: entry.runs,
       overallScore: pick(entry.overall),
-      scores: Object.fromEntries(group.questions.map((question) => [question.key, pick(entry.questions.get(question.key) || [])])),
+      scores: Object.fromEntries(group.questions.map((question) => [question.key, pick(entry.questions.get(question.key) || [], question.direction)])),
     };
   }).sort((a, b) => (b.overallScore ?? -Infinity) - (a.overallScore ?? -Infinity) || a.createdAt.localeCompare(b.createdAt));
   const best = rows.find((row) => row.overallScore != null);

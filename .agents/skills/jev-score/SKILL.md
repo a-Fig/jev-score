@@ -9,7 +9,7 @@ Use the CLI as the agent interface. It prints JSON and shares its SQLite databas
 
 ## General workflow
 
-1. Reuse a suitable evaluation group from `jev-score group list`, or create one. Phrase questions clearly. The default scorer assumes higher is better.
+1. Reuse a suitable evaluation group from `jev-score group list`, or create one. Phrase questions clearly and label each one as higher-is-better or lower-is-better. Higher is the default; prefix a plain-text question with `[lower]` when lower is better.
 2. Reuse or create a context-centered workspace. Attach the group and make it primary.
 3. Save the original document first. The first document in a workspace is marked original automatically.
 4. Ask Jev Score to evaluate it. Read individual question scores as well as the overall score.
@@ -17,7 +17,7 @@ Use the CLI as the agent interface. It prints JSON and shares its SQLite databas
 6. Use `rank` to compare revisions. Stop based on the user's goal and judgment; Jev Score does not edit or decide when to stop.
 7. Run `jev-score ui` when the user wants to inspect progress or work in the interface.
 
-Repeated evaluations of identical content create separate runs but not duplicate documents. Rankings default to highest-ever score; use median mode when the user wants repeated-run stability. Always preserve meaningful user facts and voice while editing.
+Repeated evaluations of identical content create separate runs but not duplicate documents. Rankings default to the best observed score: highest for higher-is-better metrics and lowest for lower-is-better metrics. Use median mode when the user wants repeated-run stability. Always preserve meaningful user facts and voice while editing.
 
 ## CLI
 
@@ -69,7 +69,7 @@ Run `jev-score --help` for the complete command list. Names and IDs are accepted
 
 Questions and custom scorer code are immutable after a group's first run. Rename is allowed. Deleting a group deletes every run and score created with it. Create a new group when criteria or scorer behavior must change.
 
-Custom scorer files export one synchronous default function that receives `{ question_key: normalizedScore }` and returns a finite 0–100 number. Use them for weights or to invert lower-is-better questions. Treat scorer files as trusted local code.
+Custom scorer files export one synchronous default function that receives raw `{ question_key: normalizedScore }` values and returns a finite 0–100 number. A custom scorer replaces the automatic direction-aware mean, so its code must invert lower-is-better inputs when desired. Treat scorer files as trusted local code.
 
 ## Credentials and data
 
