@@ -1,7 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const main = $("#main");
-const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics", compare: [] };
+const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics", compare: [], comparisonView: "rendered" };
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options.headers } });
@@ -86,6 +86,46 @@ function markdownToHtml(markdown) {
   if (inCode) output.push(`<pre><code${codeLanguage ? ` class="language-${escapeHtml(codeLanguage)}"` : ""}>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
   flushParagraph(); flushList();
   return output.join("\n");
+}
+
+function diffLines(leftText, rightText) {
+  const left = String(leftText).replace(/\r\n?/g, "\n").split("\n");
+  const right = String(rightText).replace(/\r\n?/g, "\n").split("\n");
+  if (left.length * right.length > 2_000_000) {
+    return Array.from({ length: Math.max(left.length, right.length) }, (_, index) => ({
+      left: left[index] ?? null, right: right[index] ?? null,
+      leftNumber: index < left.length ? index + 1 : null, rightNumber: index < right.length ? index + 1 : null,
+      leftType: index >= left.length ? "empty" : left[index] === right[index] ? "same" : "removed",
+      rightType: index >= right.length ? "empty" : left[index] === right[index] ? "same" : "added",
+    }));
+  }
+  const lengths = Array.from({ length: left.length + 1 }, () => new Uint32Array(right.length + 1));
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) lengths[i][j] = left[i] === right[j] ? lengths[i + 1][j + 1] + 1 : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+  }
+  const rows = [];
+  let i = 0, j = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) { rows.push({ left: left[i], right: right[j], leftNumber: i + 1, rightNumber: j + 1, leftType: "same", rightType: "same" }); i += 1; j += 1; }
+    else if (lengths[i + 1][j] >= lengths[i][j + 1]) { rows.push({ left: left[i], right: null, leftNumber: i + 1, rightNumber: null, leftType: "removed", rightType: "empty" }); i += 1; }
+    else { rows.push({ left: null, right: right[j], leftNumber: null, rightNumber: j + 1, leftType: "empty", rightType: "added" }); j += 1; }
+  }
+  while (i < left.length) { rows.push({ left: left[i], right: null, leftNumber: i + 1, rightNumber: null, leftType: "removed", rightType: "empty" }); i += 1; }
+  while (j < right.length) { rows.push({ left: null, right: right[j], leftNumber: null, rightNumber: j + 1, leftType: "empty", rightType: "added" }); j += 1; }
+  return rows;
+}
+
+function renderDiffCell(content, number, type) {
+  const marker = type === "removed" ? "−" : type === "added" ? "+" : "";
+  return `<div class="diff-cell ${type}"><span class="diff-number">${number ?? ""}</span><span class="diff-marker">${marker}</span><code>${content == null ? "" : escapeHtml(content) || " "}</code></div>`;
+}
+
+function comparisonDocuments(left, right, workspaceId, mode) {
+  const header = (document) => `<header><strong>${escapeHtml(versionTitle(document))}</strong><a href="/api/workspaces/${workspaceId}/documents/${document.id}?download">Download</a></header>`;
+  if (mode === "diff") {
+    return `<div class="diff-view"><div class="diff-headings"><div>${header(left)}</div><div>${header(right)}</div></div><div class="diff-rows">${diffLines(left.content, right.content).map((row) => `<div class="diff-row">${renderDiffCell(row.left, row.leftNumber, row.leftType)}${renderDiffCell(row.right, row.rightNumber, row.rightType)}</div>`).join("")}</div></div>`;
+  }
+  return `<div class="compare-documents"><article>${header(left)}<div class="markdown-body">${markdownToHtml(left.content)}</div></article><article>${header(right)}<div class="markdown-body">${markdownToHtml(right.content)}</div></article></div>`;
 }
 
 async function loadDashboard() {
@@ -247,10 +287,11 @@ async function openComparison() {
       <div class="comparison-top"><div><p class="eyebrow">Document comparison</p><h2>Compare drafts</h2><p class="subtle">${escapeHtml(state.workspace.matrix?.group.name || "Scores unavailable")} · ${state.mode === "median" ? "median" : "highest"} scores</p></div><div class="viewer-actions"><button class="ghost" id="swap-comparison">Swap</button><button class="icon" id="close-comparison" aria-label="Close">×</button></div></div>
       <div class="compare-pickers"><label>Left document<select data-compare-picker="0">${options(left.id)}</select></label><label>Right document<select data-compare-picker="1">${options(right.id)}</select></label></div>
       <section class="comparison-section"><div class="comparison-section-title"><h3>Scores</h3><span class="subtle">Left and right stay aligned by metric</span></div>${comparisonScoreRows(left.id, right.id)}</section>
-      <section class="comparison-section"><div class="comparison-section-title"><h3>Documents</h3><span class="subtle">Rendered Markdown</span></div><div class="compare-documents"><article><header><strong>${escapeHtml(versionTitle(left))}</strong><a href="/api/workspaces/${workspace.id}/documents/${left.id}?download">Download</a></header><div class="markdown-body">${markdownToHtml(left.content)}</div></article><article><header><strong>${escapeHtml(versionTitle(right))}</strong><a href="/api/workspaces/${workspace.id}/documents/${right.id}?download">Download</a></header><div class="markdown-body">${markdownToHtml(right.content)}</div></article></div></section>
+      <section class="comparison-section"><div class="comparison-section-title"><h3>Documents</h3><div class="segmented compare-view-toggle"><button data-comparison-view="rendered" class="${state.comparisonView === "rendered" ? "active" : ""}">Rendered</button><button data-comparison-view="diff" class="${state.comparisonView === "diff" ? "active" : ""}">Diff</button></div></div><div id="comparison-documents">${comparisonDocuments(left, right, workspace.id, state.comparisonView)}</div></section>
     </div>`;
     $("#close-comparison").onclick = () => $("#compare-dialog").close();
     $("#swap-comparison").onclick = () => { state.compare.reverse(); openComparison(); renderCompareTray(); };
+    $$('[data-comparison-view]', $("#comparison")).forEach((button) => button.onclick = () => { state.comparisonView = button.dataset.comparisonView; openComparison(); });
     $$('[data-compare-picker]', $("#comparison")).forEach((select) => select.onchange = () => {
       const index = Number(select.dataset.comparePicker);
       if (state.compare[1 - index] === select.value) { toast("Choose two different documents"); select.value = state.compare[index]; return; }
