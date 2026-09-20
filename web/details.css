@@ -7,3 +7,6 @@
 .score-list { display: grid; gap: 6px; margin-top: 11px; }
 .score-list div { display: flex; justify-content: space-between; gap: 20px; font-size: 12px; }
 .run-error { color: #a32d21; font-size: 12px; }
+#group-select { max-width: 280px; }
+#metric-select { flex: 1 1 280px; min-width: 220px; max-width: 520px; }
+#attach-select { max-width: 220px; }
