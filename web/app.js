@@ -1,7 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const main = $("#main");
-const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics", compare: [], comparisonView: "rendered" };
+const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics", compare: [], comparisonView: "rendered", diffExpanded: false };
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options.headers } });
@@ -115,6 +115,41 @@ function diffLines(leftText, rightText) {
   return rows;
 }
 
+function alignDiffChanges(rows) {
+  const aligned = [];
+  for (let index = 0; index < rows.length;) {
+    if (rows[index].leftType === "same") { aligned.push(rows[index]); index += 1; continue; }
+    const removed = [], added = [];
+    while (index < rows.length && rows[index].leftType !== "same") {
+      if (rows[index].leftType === "removed") removed.push(rows[index]);
+      if (rows[index].rightType === "added") added.push(rows[index]);
+      index += 1;
+    }
+    for (let offset = 0; offset < Math.max(removed.length, added.length); offset += 1) {
+      aligned.push({
+        left: removed[offset]?.left ?? null, right: added[offset]?.right ?? null,
+        leftNumber: removed[offset]?.leftNumber ?? null, rightNumber: added[offset]?.rightNumber ?? null,
+        leftType: removed[offset] ? "removed" : "empty", rightType: added[offset] ? "added" : "empty",
+      });
+    }
+  }
+  return aligned;
+}
+
+function collapseDiffContext(rows, context = 3) {
+  const compact = [];
+  for (let index = 0; index < rows.length;) {
+    if (rows[index].leftType !== "same") { compact.push(rows[index]); index += 1; continue; }
+    let end = index;
+    while (end < rows.length && rows[end].leftType === "same") end += 1;
+    const run = rows.slice(index, end);
+    if (run.length > context * 2 + 3) compact.push(...run.slice(0, context), { collapsed: run.length - context * 2 }, ...run.slice(-context));
+    else compact.push(...run);
+    index = end;
+  }
+  return compact;
+}
+
 function renderDiffCell(content, number, type) {
   const marker = type === "removed" ? "−" : type === "added" ? "+" : "";
   return `<div class="diff-cell ${type}"><span class="diff-number">${number ?? ""}</span><span class="diff-marker">${marker}</span><code>${content == null ? "" : escapeHtml(content) || " "}</code></div>`;
@@ -123,7 +158,12 @@ function renderDiffCell(content, number, type) {
 function comparisonDocuments(left, right, workspaceId, mode) {
   const header = (document) => `<header><strong>${escapeHtml(versionTitle(document))}</strong><a href="/api/workspaces/${workspaceId}/documents/${document.id}?download">Download</a></header>`;
   if (mode === "diff") {
-    return `<div class="diff-view"><div class="diff-headings"><div>${header(left)}</div><div>${header(right)}</div></div><div class="diff-rows">${diffLines(left.content, right.content).map((row) => `<div class="diff-row">${renderDiffCell(row.left, row.leftNumber, row.leftType)}${renderDiffCell(row.right, row.rightNumber, row.rightType)}</div>`).join("")}</div></div>`;
+    const rows = alignDiffChanges(diffLines(left.content, right.content));
+    const visibleRows = state.diffExpanded ? rows : collapseDiffContext(rows);
+    const removals = rows.filter((row) => row.leftType === "removed").length;
+    const additions = rows.filter((row) => row.rightType === "added").length;
+    const diffHeader = (document, role, count, kind) => `<header><div><span class="diff-role">${role}</span><strong>${escapeHtml(versionTitle(document))}</strong></div><div class="diff-header-actions"><span class="diff-count ${kind}">${kind === "removed" ? "−" : "+"}${count}</span><a href="/api/workspaces/${workspaceId}/documents/${document.id}?download">Download</a></div></header>`;
+    return `<div class="diff-view"><div class="diff-headings"><div>${diffHeader(left, "Original", removals, "removed")}</div><div>${diffHeader(right, "Changed", additions, "added")}</div></div><div class="diff-rows">${visibleRows.map((row) => row.collapsed ? `<div class="diff-collapse"><button data-expand-diff>⋯ ${row.collapsed} unchanged lines</button></div>` : `<div class="diff-row">${renderDiffCell(row.left, row.leftNumber, row.leftType)}${renderDiffCell(row.right, row.rightNumber, row.rightType)}</div>`).join("")}</div></div>`;
   }
   return `<div class="compare-documents"><article>${header(left)}<div class="markdown-body">${markdownToHtml(left.content)}</div></article><article>${header(right)}<div class="markdown-body">${markdownToHtml(right.content)}</div></article></div>`;
 }
@@ -187,6 +227,7 @@ function toggleCompare(documentId) {
   if (state.compare.includes(documentId)) state.compare = state.compare.filter((id) => id !== documentId);
   else if (state.compare.length < 2) state.compare.push(documentId);
   else { toast("Comparison already has two documents"); return; }
+  state.diffExpanded = false;
   if (state.workspace) renderWorkspace();
   else renderCompareTray();
 }
@@ -281,21 +322,27 @@ async function openComparison() {
   if (state.compare.length !== 2 || !state.workspace) return;
   const workspace = state.workspace.workspace;
   try {
+    state.compare.sort((leftId, rightId) => {
+      const left = state.workspace.documents.find((document) => document.id === leftId);
+      const right = state.workspace.documents.find((document) => document.id === rightId);
+      return left.version - right.version;
+    });
+    renderCompareTray();
     const [left, right] = await Promise.all(state.compare.map((id) => api(`/api/workspaces/${workspace.id}/documents/${id}`)));
     const options = (selectedId) => state.workspace.documents.map((document) => `<option value="${document.id}" ${document.id === selectedId ? "selected" : ""}>${escapeHtml(versionTitle(document))}</option>`).join("");
     $("#comparison").innerHTML = `<div class="comparison-shell">
-      <div class="comparison-top"><div><p class="eyebrow">Document comparison</p><h2>Compare drafts</h2><p class="subtle">${escapeHtml(state.workspace.matrix?.group.name || "Scores unavailable")} · ${state.mode === "median" ? "median" : "highest"} scores</p></div><div class="viewer-actions"><button class="ghost" id="swap-comparison">Swap</button><button class="icon" id="close-comparison" aria-label="Close">×</button></div></div>
-      <div class="compare-pickers"><label>Left document<select data-compare-picker="0">${options(left.id)}</select></label><label>Right document<select data-compare-picker="1">${options(right.id)}</select></label></div>
+      <div class="comparison-top"><div><p class="eyebrow">Document comparison</p><h2>Compare drafts</h2><p class="subtle">${escapeHtml(state.workspace.matrix?.group.name || "Scores unavailable")} · ${state.mode === "median" ? "median" : "highest"} scores</p></div><button class="icon" id="close-comparison" aria-label="Close">×</button></div>
+      <div class="compare-pickers"><label>Original document<select data-compare-picker="0">${options(left.id)}</select></label><label>Changed document<select data-compare-picker="1">${options(right.id)}</select></label></div>
       <section class="comparison-section"><div class="comparison-section-title"><h3>Scores</h3></div>${comparisonScoreRows(left.id, right.id)}</section>
       <section class="comparison-section"><div class="comparison-section-title"><h3>Documents</h3><div class="segmented compare-view-toggle"><button data-comparison-view="rendered" class="${state.comparisonView === "rendered" ? "active" : ""}">Rendered</button><button data-comparison-view="diff" class="${state.comparisonView === "diff" ? "active" : ""}">Diff</button></div></div><div id="comparison-documents">${comparisonDocuments(left, right, workspace.id, state.comparisonView)}</div></section>
     </div>`;
-    $("#close-comparison").onclick = () => $("#compare-dialog").close();
-    $("#swap-comparison").onclick = () => { state.compare.reverse(); openComparison(); renderCompareTray(); };
+    $("#close-comparison").onclick = () => { state.diffExpanded = false; $("#compare-dialog").close(); };
     $$('[data-comparison-view]', $("#comparison")).forEach((button) => button.onclick = () => { state.comparisonView = button.dataset.comparisonView; openComparison(); });
+    $$('[data-expand-diff]', $("#comparison")).forEach((button) => button.onclick = () => { state.diffExpanded = true; openComparison(); });
     $$('[data-compare-picker]', $("#comparison")).forEach((select) => select.onchange = () => {
       const index = Number(select.dataset.comparePicker);
       if (state.compare[1 - index] === select.value) { toast("Choose two different documents"); select.value = state.compare[index]; return; }
-      state.compare[index] = select.value; openComparison(); renderWorkspace();
+      state.compare[index] = select.value; state.diffExpanded = false; openComparison(); renderWorkspace();
     });
     if (!$("#compare-dialog").open) $("#compare-dialog").showModal();
   } catch (error) { toast(error.message, true); }

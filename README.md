@@ -90,7 +90,7 @@ jev-score --help
 - **Content deduplication** by SHA-256, while every evaluation remains a separate run.
 - **Useful score summaries**: median, minimum, maximum, spread, run count, and question-level results.
 - **Flexible rankings** by overall score or one question, using highest-ever or median mode.
-- **Side-by-side comparison** of every score and rendered Markdown, plus a GitHub-style line diff for exact changes.
+- **Side-by-side comparison** of every score and rendered Markdown, plus a GitHub-style line diff using the earlier version as its baseline.
 - **Visible progress** through original/best badges, per-run changes, and a best-so-far chart.
 - **Custom overall scores** for weighting or lower-is-better criteria.
 - **Agent-friendly JSON** from every data command and a project-local agent skill.
