@@ -1,7 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const main = $("#main");
-const state = { dashboard: null, workspace: null, group: null, question: "", mode: null };
+const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics" };
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options.headers } });
@@ -59,8 +59,26 @@ function chartSvg(points) {
   return `<svg id="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Score change over evaluation runs"><line class="axis" x1="${pad}" x2="${width-pad}" y1="${y(0)}" y2="${y(0)}"/><path class="frontier-line" d="${line("frontier")}"/><path class="chart-line" d="${line("delta")}"/>${usable.map((point,index)=>`<circle class="dot" cx="${x(index)}" cy="${y(point.delta)}" r="4"><title>${escapeHtml(point.documentTitle)}: ${point.delta > 0 ? "+" : ""}${point.delta}</title></circle>`).join("")}</svg>`;
 }
 
+function documentName(document) {
+  return `<div class="doc-title">${escapeHtml(document.title)} ${document.isOriginal ? `<span class="badge original">Original</span>` : ""} ${document.isBest ? `<span class="badge best">Best</span>` : ""}</div><div class="doc-summary">${escapeHtml(document.changeSummary || date(document.createdAt))}</div>`;
+}
+
+function documentActions(workspace, document, canEvaluate) {
+  return `<div class="row-actions"><button data-view="${document.id}">View</button><a href="/api/workspaces/${workspace.id}/documents/${document.id}?download">Download</a>${canEvaluate ? `<button data-evaluate="${document.id}">Evaluate</button>` : ""}</div>`;
+}
+
+function rankingTable(workspace, documents, canEvaluate) {
+  if (!documents.length) return `<div class="chart-empty">Add the original document to begin.</div>`;
+  return `<div class="table-scroll"><table><thead><tr><th>Document</th><th>Rank score</th><th>Median</th><th>Range</th><th>Runs</th><th>Change</th><th></th></tr></thead><tbody>${documents.map((document) => `<tr><td>${documentName(document)}</td><td class="score">${score(document.rankScore)}</td><td>${score(document.median)}</td><td>${document.runs < 2 ? "—" : `${score(document.min)}–${score(document.max)} <span class="subtle">(${score(document.spread)})</span>`}</td><td>${document.runs}</td><td class="${document.delta > 0 ? "delta" : ""}">${document.delta == null ? "—" : `${document.delta > 0 ? "+" : ""}${score(document.delta)}`}</td><td>${documentActions(workspace, document, canEvaluate)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function metricsTable(workspace, matrix, canEvaluate) {
+  if (!matrix?.rows.length) return `<div class="chart-empty">Add the original document to begin.</div>`;
+  return `<div class="table-scroll"><table class="matrix-table"><thead><tr><th>Document</th><th>Overall</th>${matrix.questions.map((question) => `<th title="${escapeHtml(question.text)}">${escapeHtml(question.text)}</th>`).join("")}<th>Runs</th><th></th></tr></thead><tbody>${matrix.rows.map((document) => `<tr><td>${documentName(document)}</td><td class="score">${score(document.overallScore)}</td>${matrix.questions.map((question) => `<td>${score(document.scores[question.key])}</td>`).join("")}<td>${document.runs}</td><td>${documentActions(workspace, document, canEvaluate)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
 function renderWorkspace() {
-  const { workspace, groups, documents, ranking: result } = state.workspace;
+  const { workspace, groups, documents, ranking: result, matrix } = state.workspace;
   const allGroups = state.dashboard.groups;
   const active = groups.find((group) => group.id === result?.group.id);
   const options = groups.map((group) => `<option value="${group.id}" ${group.id === result?.group.id ? "selected" : ""}>${escapeHtml(group.name)}</option>`).join("");
@@ -76,10 +94,10 @@ function renderWorkspace() {
     ${groups.length ? `<div class="toolbar" style="justify-content:flex-start;margin:16px 0"><select id="group-select">${options}</select><select id="metric-select"><option value="">Overall score</option>${questionOptions}</select><div class="segmented"><button data-mode="max" class="${result?.mode === "max" ? "active" : ""}">Highest</button><button data-mode="median" class="${result?.mode === "median" ? "active" : ""}">Median</button></div>${attachable.length ? `<select id="attach-select"><option value="">＋ Attach group…</option>${attachable.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>` : `<div class="empty-card"><strong>No evaluation group attached</strong><p class="subtle">Create a reusable group or attach one from the group library.</p><button class="primary" id="workspace-new-group">Create group</button>${allGroups.length ? `<select id="attach-select" style="margin-top:10px"><option value="">Attach existing…</option>${allGroups.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>`}
     ${result ? `<div class="grid">
       <article class="chart-card"><div class="card-head"><div><h2>Progress from original</h2><p>Each run and the best-so-far frontier · percentage points</p></div><span class="metric-note">${escapeHtml(result.question?.text || "Overall")}</span></div>${chartSvg(result.timeline)}</article>
-      <article class="chart-card"><div class="card-head"><div><h2>Current leader</h2><p>${result.mode === "max" ? "Highest score ever" : "Median across runs"}</p></div>${best ? `<span class="badge best">Best</span>` : ""}</div>${best ? `<h3 style="font-size:22px;margin:24px 0 4px">${escapeHtml(best.title)}</h3><div class="stats"><div class="stat"><strong>${score(best.rankScore)}</strong><span>rank score</span></div><div class="stat"><strong>${best.runs}</strong><span>runs</span></div><div class="stat"><strong>${score(best.spread)}</strong><span>spread</span></div></div>` : `<div class="chart-empty">No scores yet.</div>`}</article>
+      <article class="chart-card"><div class="card-head"><div><h2>Current leader</h2><p>${result.mode === "max" ? "Highest score ever" : "Median across runs"}</p></div>${best ? `<span class="badge best">Best</span>` : ""}</div>${best ? `<h3 style="font-size:22px;margin:24px 0 4px">${escapeHtml(best.title)}</h3><div class="stats"><div class="stat"><strong>${score(best.rankScore)}</strong><span>rank score</span></div><div class="stat"><strong>${best.runs}</strong><span>runs</span></div><div class="stat"><strong>${best.runs > 1 ? score(best.spread) : "—"}</strong><span>spread</span></div></div>` : `<div class="chart-empty">No scores yet.</div>`}</article>
     </div>` : ""}
-    <article class="table-card" style="margin-top:16px"><div class="table-title"><h2>Documents</h2><div>${active ? `<span class="subtle">${escapeHtml(active.name)}</span>` : ""}</div></div>
-      ${ranked.length ? `<table><thead><tr><th>Document</th><th>Rank score</th><th>Median</th><th>Range</th><th>Runs</th><th>Change</th><th></th></tr></thead><tbody>${ranked.map((document) => `<tr><td><div class="doc-title">${escapeHtml(document.title)} ${document.isOriginal ? `<span class="badge original">Original</span>` : ""} ${document.isBest ? `<span class="badge best">Best</span>` : ""}</div><div class="doc-summary">${escapeHtml(document.changeSummary || date(document.createdAt))}</div></td><td class="score">${score(document.rankScore)}</td><td>${score(document.median)}</td><td>${document.min == null ? "—" : `${score(document.min)}–${score(document.max)}`} ${document.spread != null ? `<span class="subtle">(${score(document.spread)})</span>` : ""}</td><td>${document.runs}</td><td class="${document.delta > 0 ? "delta" : ""}">${document.delta == null ? "—" : `${document.delta > 0 ? "+" : ""}${score(document.delta)}`}</td><td><div class="row-actions"><button data-view="${document.id}">View</button><a href="/api/workspaces/${workspace.id}/documents/${document.id}?download">Download</a>${active ? `<button data-evaluate="${document.id}">Evaluate</button>` : ""}</div></td></tr>`).join("")}</tbody></table>` : `<div class="chart-empty">Add the original document to begin.</div>`}</article>
+    <article class="table-card" style="margin-top:16px"><div class="table-title"><div><h2>Documents</h2>${active ? `<span class="subtle">${escapeHtml(active.name)} · ${result.mode === "max" ? "highest" : "median"}</span>` : ""}</div>${matrix ? `<div class="segmented table-toggle"><button data-table-view="metrics" class="${state.tableView === "metrics" ? "active" : ""}">All metrics</button><button data-table-view="ranking" class="${state.tableView === "ranking" ? "active" : ""}">Ranking</button></div>` : ""}</div>
+      ${state.tableView === "metrics" && matrix ? metricsTable(workspace, matrix, Boolean(active)) : rankingTable(workspace, ranked, Boolean(active))}</article>
   </section>`;
   $("#upload").onclick = () => openUpload(documents);
   $("#delete-workspace").onclick = async () => { if (confirm(`Delete “${workspace.name}” and every document and score inside it?`)) { await api(`/api/workspaces/${workspace.id}`, { method: "DELETE" }); state.workspace = null; state.group = null; state.question = ""; state.mode = null; await loadDashboard(); state.dashboard.workspaces.length ? openWorkspace(state.dashboard.workspaces[0].id) : renderEmpty(); } };
@@ -90,6 +108,7 @@ function renderWorkspace() {
   $("#attach-select")?.addEventListener("change", async (event) => { if (!event.target.value) return; await api(`/api/workspaces/${workspace.id}/groups`, { method: "POST", body: JSON.stringify({ group: event.target.value }) }); await api(`/api/workspaces/${workspace.id}`, { method: "PATCH", body: JSON.stringify({ primaryGroup: event.target.value }) }); state.question = ""; openWorkspace(workspace.id, { group: event.target.value }); });
   $$('[data-view]').forEach((button) => button.onclick = () => viewDocument(workspace.id, button.dataset.view));
   $$('[data-evaluate]').forEach((button) => button.onclick = () => evaluate(workspace.id, button.dataset.evaluate, button));
+  $$('[data-table-view]').forEach((button) => button.onclick = () => { state.tableView = button.dataset.tableView; renderWorkspace(); });
 }
 
 async function evaluate(workspaceId, documentId, button) {

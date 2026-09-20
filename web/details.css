@@ -10,3 +10,16 @@
 #group-select { max-width: 280px; }
 #metric-select { flex: 1 1 280px; min-width: 220px; max-width: 520px; }
 #attach-select { max-width: 220px; }
+.table-scroll { overflow-x: auto; }
+.table-card,
+.grid > * { min-width: 0; }
+.shell { grid-template-columns: 248px minmax(0, 1fr); }
+main { min-width: 0; }
+.table-title > div:first-child { align-items: baseline; }
+.table-toggle { margin-left: auto; white-space: nowrap; }
+.matrix-table { width: max-content; min-width: 100%; }
+.matrix-table th:not(:first-child) { min-width: 150px; max-width: 190px; white-space: normal; line-height: 1.35; text-transform: none; letter-spacing: 0; }
+.matrix-table th:first-child,
+.matrix-table td:first-child { position: sticky; left: 0; min-width: 270px; background: #fff; z-index: 1; }
+.matrix-table th:first-child { z-index: 2; }
+.matrix-table .row-actions { white-space: nowrap; }

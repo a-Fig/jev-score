@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openDatabase } from "../src/db.mjs";
-import { addDocument, createGroup, createWorkspace, deleteGroup, documentDetail, evaluateDocument, listDocuments, ranking, resolveGroup } from "../src/service.mjs";
+import { addDocument, createGroup, createWorkspace, deleteGroup, documentDetail, evaluateDocument, listDocuments, ranking, resolveGroup, scoreMatrix } from "../src/service.mjs";
 
 const temporary = [];
 afterEach(() => { while (temporary.length) rmSync(temporary.pop(), { recursive: true, force: true }); });
@@ -24,6 +24,9 @@ test("documents deduplicate by normalized content while every evaluation is reta
   const result = ranking(db, workspace.id);
   assert.equal(listDocuments(db, workspace.id).length, 1);
   assert.deepEqual({ runs: result.items[0].runs, min: result.items[0].min, max: result.items[0].max, median: result.items[0].median }, { runs: 2, min: 75, max: 87.5, median: 81.3 });
+  const matrix = scoreMatrix(db, workspace.id, { mode: "median" });
+  assert.equal(matrix.rows[0].overallScore, 81.3);
+  assert.deepEqual(Object.values(matrix.rows[0].scores), [62.5, 100]);
   assert.equal(documentDetail(db, workspace.id, first.id).runs[0].scores.length, 2);
   assert.equal(resolveGroup(db, group.id).locked, true); db.close();
 });

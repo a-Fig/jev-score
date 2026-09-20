@@ -286,12 +286,48 @@ export function ranking(db, workspaceRef, { group: groupRef = null, question = n
   return { workspace: { id: workspace.id, name: workspace.name }, group: { id: group.id, name: group.name }, question: questionInfo, mode: rankingMode, items, timeline };
 }
 
+export function scoreMatrix(db, workspaceRef, { group: groupRef = null, mode = null } = {}) {
+  const workspace = resolveWorkspace(db, workspaceRef);
+  const group = resolveGroup(db, groupRef || workspace.primaryGroupId || "");
+  const rankingMode = mode || workspace.rankingMode;
+  if (!["max", "median"].includes(rankingMode)) throw new Error("Ranking mode must be max or median.");
+  const documents = listDocuments(db, workspace.id);
+  const values = new Map(documents.map((document) => [document.id, { overall: [], questions: new Map(), runs: 0 }]));
+  db.prepare(`SELECT document_id, overall_score FROM evaluation_runs WHERE workspace_id=? AND group_id=?`).all(workspace.id, group.id).forEach((run) => {
+    const entry = values.get(run.document_id);
+    entry.runs += 1;
+    if (Number.isFinite(run.overall_score)) entry.overall.push(Number(run.overall_score));
+  });
+  db.prepare(`SELECT r.document_id,q.question_key,s.normalized_score FROM evaluation_scores s JOIN evaluation_runs r ON r.id=s.run_id JOIN evaluation_questions q ON q.id=s.question_id WHERE r.workspace_id=? AND r.group_id=?`).all(workspace.id, group.id).forEach((row) => {
+    const questions = values.get(row.document_id).questions;
+    if (!questions.has(row.question_key)) questions.set(row.question_key, []);
+    questions.get(row.question_key).push(Number(row.normalized_score));
+  });
+  const pick = (items) => items.length ? round(rankingMode === "max" ? Math.max(...items) : median(items)) : null;
+  const rows = documents.map((document) => {
+    const entry = values.get(document.id);
+    return {
+      ...document,
+      runs: entry.runs,
+      overallScore: pick(entry.overall),
+      scores: Object.fromEntries(group.questions.map((question) => [question.key, pick(entry.questions.get(question.key) || [])])),
+    };
+  }).sort((a, b) => (b.overallScore ?? -Infinity) - (a.overallScore ?? -Infinity) || a.createdAt.localeCompare(b.createdAt));
+  const best = rows.find((row) => row.overallScore != null);
+  rows.forEach((row) => { row.isBest = row.id === best?.id; });
+  return { group: { id: group.id, name: group.name }, mode: rankingMode, questions: group.questions, rows };
+}
+
 export function workspaceDetail(db, workspaceRef, options = {}) {
   const workspace = resolveWorkspace(db, workspaceRef);
   const attachedGroups = workspace.groups.map(({ id }) => resolveGroup(db, id));
   let currentRanking = null;
-  if (workspace.primaryGroupId || options.group) currentRanking = ranking(db, workspace.id, options);
-  return { workspace, groups: attachedGroups, documents: listDocuments(db, workspace.id), ranking: currentRanking };
+  let matrix = null;
+  if (workspace.primaryGroupId || options.group) {
+    currentRanking = ranking(db, workspace.id, options);
+    matrix = scoreMatrix(db, workspace.id, options);
+  }
+  return { workspace, groups: attachedGroups, documents: listDocuments(db, workspace.id), ranking: currentRanking, matrix };
 }
 
 export function dashboard(db) {
