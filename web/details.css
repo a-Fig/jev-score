@@ -1,0 +1,9 @@
+.viewer-content { max-height: 44vh; }
+.history-title { font-size: 15px; margin: 22px 0 10px; }
+.run-list { display: grid; gap: 8px; max-height: 34vh; overflow: auto; }
+.run-card { border: 1px solid var(--line); border-radius: 8px; padding: 13px; }
+.run-head { display: flex; justify-content: space-between; gap: 15px; }
+.run-head .subtle { display: block; font-size: 11px; margin-top: 3px; }
+.score-list { display: grid; gap: 6px; margin-top: 11px; }
+.score-list div { display: flex; justify-content: space-between; gap: 20px; font-size: 12px; }
+.run-error { color: #a32d21; font-size: 12px; }

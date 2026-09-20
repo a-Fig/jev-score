@@ -1,0 +1,36 @@
+{
+  "name": "jev-score",
+  "version": "1.0.0",
+  "description": "Local-first document evaluation workspaces powered by Jev.",
+  "license": "MIT",
+  "keywords": ["jev", "evaluation", "writing", "openrouter", "codex", "claude-code"],
+  "repository": { "type": "git", "url": "git+https://github.com/a-Fig/jev-score.git" },
+  "homepage": "https://github.com/a-Fig/jev-score#readme",
+  "bugs": { "url": "https://github.com/a-Fig/jev-score/issues" },
+  "publishConfig": { "access": "public" },
+  "files": [
+    ".env.example",
+    "bin/",
+    "src/",
+    "web/",
+    ".agents/skills/",
+    "docs/",
+    "examples/",
+    "LICENSE",
+    "README.md"
+  ],
+  "bin": {
+    "jev-score": "./bin/jev-score.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node ./bin/jev-score.mjs serve",
+    "ui": "node ./bin/jev-score.mjs ui",
+    "test": "node --test ./test/*.test.mjs",
+    "pack:check": "npm pack --dry-run --json",
+    "prepack": "npm test"
+  },
+  "type": "module"
+}

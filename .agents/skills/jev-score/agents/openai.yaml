@@ -1,0 +1,5 @@
+interface:
+  display_name: "Jev Score"
+  short_description: "Score documents against context with Jev"
+  brand_color: "#1F44FF"
+  default_prompt: "Use $jev-score to score this document against my context and criteria."

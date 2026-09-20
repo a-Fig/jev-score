@@ -1,0 +1,5 @@
+[
+  { "key": "role_fit", "text": "Does the document strongly fit the role?" },
+  { "key": "clarity", "text": "Is the document clear and easy to scan?" },
+  { "key": "red_flags", "text": "Does the document contain concerning red flags?" }
+]

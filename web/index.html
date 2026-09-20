@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Jev Score</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/details.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">J</span><span>Jev Score</span></div>
+      <button class="primary full" id="new-workspace">＋ New workspace</button>
+      <nav id="workspace-list" aria-label="Workspaces"></nav>
+      <div class="side-bottom">
+        <button class="ghost full" id="manage-groups">Evaluation groups <span>⌘</span></button>
+      </div>
+    </aside>
+    <main id="main" tabindex="-1"></main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="workspace-dialog">
+    <form method="dialog" id="workspace-form">
+      <header><div><p class="eyebrow">New workspace</p><h2>What are you optimizing?</h2></div><button type="button" data-close class="icon" aria-label="Close">×</button></header>
+      <label>Name<input name="name" required placeholder="Senior designer application"></label>
+      <label>Context title<input name="contextTitle" placeholder="Job posting"></label>
+      <label>Context<textarea name="contextContent" rows="11" required placeholder="Paste the job posting, essay prompt, spec, or other context…"></textarea></label>
+      <label>Primary evaluation group<select name="primaryGroup"><option value="">Choose later</option></select></label>
+      <footer><button type="button" data-close class="ghost">Cancel</button><button value="default" class="primary">Create workspace</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="group-dialog">
+    <form method="dialog" id="group-form">
+      <header><div><p class="eyebrow">Reusable rubric</p><h2>New evaluation group</h2></div><button type="button" data-close class="icon" aria-label="Close">×</button></header>
+      <label>Name<input name="name" required placeholder="Resume quality"></label>
+      <label>Description<input name="description" placeholder="A balanced hiring review"></label>
+      <label>Questions <span class="hint">one per line</span><textarea name="questions" rows="9" required placeholder="Is this resume easy to scan?&#10;Does it demonstrate strong fit for the role?&#10;Does it feel authentic?"></textarea></label>
+      <footer><button type="button" data-close class="ghost">Cancel</button><button value="default" class="primary">Create group</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="document-dialog">
+    <form method="dialog" id="document-form">
+      <header><div><p class="eyebrow">Add a revision</p><h2>Upload document</h2></div><button type="button" data-close class="icon" aria-label="Close">×</button></header>
+      <label>Text or Markdown file<input name="file" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" required></label>
+      <label>Title<input name="title" placeholder="Filled from filename"></label>
+      <label>What changed? <span class="hint">optional</span><input name="changeSummary" placeholder="Tighter opening and clearer outcomes"></label>
+      <label>Based on <select name="parentDocument"><option value="">No parent</option></select></label>
+      <footer><button type="button" data-close class="ghost">Cancel</button><button value="default" class="primary">Add document</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="viewer-dialog" class="viewer"><div id="viewer"></div></dialog>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
