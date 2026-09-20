@@ -120,6 +120,7 @@ jev-score ui
 - **Every criterion.** Compare documents in a compact question-by-document score table or rank by one question.
 - **Actual changes.** Compare two rendered documents left and right, then switch to a GitHub-style line diff.
 - **Progress.** See improvement from the original, the best-so-far frontier, highest and median rankings, ranges, and run counts.
+- **Usage.** See locally recorded Jev token counts and OpenRouter costs in Settings or with `jev-score usage`.
 - **Reusable rubrics.** Attach the same evaluation group to many workspaces and switch the primary group at any time.
 - **Custom overall scores.** Weight criteria or invert lower-is-better questions with a small JavaScript scorer.
 
@@ -208,6 +209,7 @@ jev-score group create|list|show|rename|delete|attach
 jev-score document add|list|get
 jev-score score <workspace> <document-or-file>
 jev-score rank <workspace>
+jev-score usage
 jev-score ui [--port <port>]
 jev-score serve [--port <port>]
 jev-score db path|reset

@@ -11,7 +11,7 @@ import { startServer } from "../src/server.mjs";
 import {
   addDocument, attachGroup, createGroup, createWorkspace, deleteGroup, deleteWorkspace,
   documentDetail, evaluateDocument, listDocuments, listGroups, listWorkspaces, ranking, renameGroup,
-  resolveGroup, updateWorkspace, workspaceDetail,
+  resolveGroup, updateWorkspace, usageSummary, workspaceDetail,
 } from "../src/service.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,6 +34,7 @@ Usage:
   jev-score document get <workspace> <document> [--out <file>]
   jev-score score <workspace> <document-or-file> [--group <group>] [--title <title>] [--summary <text>]
   jev-score rank <workspace> [--group <group>] [--question <key>] [--mode <max|median>]
+  jev-score usage                     Show locally recorded Jev tokens and costs
   jev-score ui [--port <port>]      Start the app and open it in your browser
   jev-score serve [--port <port>]   Run the local app without opening a browser
   jev-score db path | reset --yes
@@ -137,6 +138,7 @@ async function main() {
 
   const db = openDatabase();
   try {
+    if (area === "usage") return out(usageSummary(db));
     if (area === "workspace") {
       if (action === "list") return out(listWorkspaces(db));
       if (action === "show") return out(workspaceDetail(db, positional[0]));

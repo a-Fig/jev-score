@@ -19,6 +19,8 @@ test("local server exposes health and workspace CRUD", async (context) => {
   assert.equal(created.name, "Essay");
   const dashboard = await (await fetch(`${url}/api/dashboard`)).json();
   assert.equal(dashboard.workspaces.length, 1);
+  const usage = await (await fetch(`${url}/api/usage`)).json();
+  assert.deepEqual(usage.total, { runs: 0, reportedRuns: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: null, costRuns: 0 });
 });
 
 test("local server rejects cross-origin and non-JSON mutations", async (context) => {

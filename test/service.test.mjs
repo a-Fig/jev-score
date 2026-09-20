@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openDatabase } from "../src/db.mjs";
-import { addDocument, createGroup, createWorkspace, deleteGroup, documentDetail, evaluateDocument, listDocuments, ranking, resolveGroup, scoreMatrix } from "../src/service.mjs";
+import { addDocument, createGroup, createWorkspace, deleteGroup, documentDetail, evaluateDocument, listDocuments, ranking, resolveGroup, scoreMatrix, usageSummary } from "../src/service.mjs";
 
 const temporary = [];
 afterEach(() => { while (temporary.length) rmSync(temporary.pop(), { recursive: true, force: true }); });
@@ -65,4 +65,19 @@ test("custom scorers can invert lower-is-better questions and group deletion cas
   assert.equal(run.overallScore, 85);
   deleteGroup(db, group.id);
   assert.equal(db.prepare("SELECT count(*) count FROM evaluation_runs").get().count, 0); db.close();
+});
+
+test("usage summary totals reported Jev tokens and costs by workspace and model", async () => {
+  const db = database();
+  const group = createGroup(db, { name: "Quality", questions: ["Clear"] });
+  const workspace = createWorkspace(db, { name: "Essay", contextContent: "Prompt", primaryGroup: group.id });
+  const document = addDocument(db, workspace.id, { title: "Draft", content: "Text" });
+  const measured = evaluator([75]);
+  await evaluateDocument(db, workspace.id, document.id, { evaluate: async (input) => ({ ...(await measured(input)), model: "typesafe/jev-test", provider: "TypeSafe", usage: { input_tokens: 120, output_tokens: 30, cost: 0.00125 } }) });
+  await evaluateDocument(db, workspace.id, document.id, { evaluate: evaluator([80]) });
+  const usage = usageSummary(db);
+  assert.deepEqual(usage.total, { runs: 2, reportedRuns: 1, inputTokens: 120, outputTokens: 30, totalTokens: 150, cost: 0.00125, costRuns: 1 });
+  assert.deepEqual(usage.workspaces[0], { id: workspace.id, name: "Essay", runs: 2, reportedRuns: 1, inputTokens: 120, outputTokens: 30, totalTokens: 150, cost: 0.00125, costRuns: 1 });
+  assert.deepEqual(usage.models.find((model) => model.model === "typesafe/jev-test"), { model: "typesafe/jev-test", provider: "TypeSafe", runs: 1, reportedRuns: 1, inputTokens: 120, outputTokens: 30, totalTokens: 150, cost: 0.00125, costRuns: 1 });
+  db.close();
 });

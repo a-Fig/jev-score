@@ -8,7 +8,7 @@ import { openDatabase } from "./db.mjs";
 import {
   addDocument, attachGroup, createGroup, createWorkspace, dashboard, deleteGroup, deleteWorkspace,
   documentDetail, evaluateDocument, listDocuments, ranking, renameGroup, resolveDocument, resolveGroup,
-  updateWorkspace, workspaceDetail,
+  updateWorkspace, usageSummary, workspaceDetail,
 } from "./service.mjs";
 
 const publicDirectory = resolve(fileURLToPath(new URL("../web/", import.meta.url)));
@@ -40,6 +40,7 @@ async function api(db, request, response, url, instanceId) {
   const method = request.method;
   if (method === "GET" && url.pathname === "/api/health") return send(response, 200, { ok: true, app: "jev-score", databaseId: instanceId });
   if (method === "GET" && url.pathname === "/api/dashboard") return send(response, 200, dashboard(db));
+  if (method === "GET" && url.pathname === "/api/usage") return send(response, 200, usageSummary(db));
   if (path[1] === "groups") {
     if (method === "POST" && path.length === 2) {
       const input = await body(request);

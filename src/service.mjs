@@ -339,3 +339,45 @@ export function workspaceDetail(db, workspaceRef, options = {}) {
 export function dashboard(db) {
   return { workspaces: listWorkspaces(db), groups: listGroups(db) };
 }
+
+export function usageSummary(db) {
+  const workspaces = listWorkspaces(db).map((workspace) => ({
+    id: workspace.id, name: workspace.name, runs: 0, reportedRuns: 0,
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, costRuns: 0,
+  }));
+  const byWorkspace = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  const models = new Map();
+  const total = { runs: 0, reportedRuns: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, costRuns: 0 };
+  const number = (...values) => values.find(Number.isFinite) ?? 0;
+  const add = (target, usage) => {
+    target.runs += 1;
+    if (!usage) return;
+    const input = number(usage.input_tokens, usage.prompt_tokens, usage.inputTokens);
+    const output = number(usage.output_tokens, usage.completion_tokens, usage.outputTokens);
+    const explicitTotal = number(usage.total_tokens, usage.totalTokens);
+    const cost = number(usage.cost);
+    target.reportedRuns += 1;
+    target.inputTokens += input;
+    target.outputTokens += output;
+    target.totalTokens += explicitTotal || input + output;
+    if (Number.isFinite(usage.cost)) { target.cost += cost; target.costRuns += 1; }
+  };
+  db.prepare(`SELECT r.workspace_id,r.model,r.provider,r.usage_json FROM evaluation_runs r ORDER BY r.created_at`).all().forEach((row) => {
+    let usage = null;
+    try { usage = parseJson(row.usage_json); } catch {}
+    add(total, usage);
+    const workspace = byWorkspace.get(row.workspace_id);
+    if (workspace) add(workspace, usage);
+    if (row.model) {
+      const key = `${row.provider || ""}\u0000${row.model}`;
+      if (!models.has(key)) models.set(key, { model: row.model, provider: row.provider || "Unknown", runs: 0, reportedRuns: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, costRuns: 0 });
+      add(models.get(key), usage);
+    }
+  });
+  const finish = (item) => ({ ...item, cost: item.costRuns ? item.cost : null });
+  return {
+    total: finish(total),
+    workspaces: workspaces.map(finish).sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1) || b.runs - a.runs || a.name.localeCompare(b.name)),
+    models: [...models.values()].map(finish).sort((a, b) => b.runs - a.runs || a.model.localeCompare(b.model)),
+  };
+}

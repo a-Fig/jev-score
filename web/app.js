@@ -17,6 +17,13 @@ function toast(message, error = false) {
 
 function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
 function score(value) { return value == null ? "—" : Number(value).toFixed(1); }
+function count(value) { return new Intl.NumberFormat().format(Number(value || 0)); }
+function money(value) {
+  if (value == null) return "—";
+  if (value === 0) return "$0.00";
+  const digits = value >= 1 ? 2 : value >= .01 ? 4 : 6;
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+}
 function date(value) { return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)); }
 function versionLabel(document) { return `#${document.version}`; }
 function versionTitle(document) { return `${versionLabel(document)} · ${document.title}`; }
@@ -177,6 +184,7 @@ async function loadDashboard() {
 }
 
 async function openWorkspace(id, overrides = {}) {
+  setSidebarUtility();
   if (state.workspace?.workspace.id !== id) state.compare = [];
   state.group = overrides.group ?? state.group;
   state.question = overrides.question ?? state.question;
@@ -192,6 +200,7 @@ async function openWorkspace(id, overrides = {}) {
 }
 
 function renderEmpty() {
+  setSidebarUtility();
   state.compare = []; renderCompareTray();
   main.innerHTML = `<section class="empty"><p class="eyebrow">Local evaluation workspace</p><h1>Make every revision measurable.</h1><p>Keep context, drafts, Jev evaluations, and progress together. Your documents stay in a local SQLite database.</p><button class="primary" id="empty-new">Create your first workspace</button><div class="empty-card"><strong>Built for you and your coding agent</strong><span class="subtle">Everything in this interface is also available through the CLI.</span><p><code>jev-score ui</code> · <code>jev-score --help</code></p></div></section>`;
   $("#empty-new").onclick = () => $("#workspace-dialog").showModal();
@@ -384,6 +393,7 @@ async function viewDocument(workspaceId, documentId) {
 }
 
 function renderGroups() {
+  setSidebarUtility("manage-groups");
   state.workspace = null; state.compare = []; renderCompareTray(); loadDashboard().then(() => {
     main.innerHTML = `<section class="groups-page"><div class="topbar"><div><p class="eyebrow">Library</p><h1>Evaluation groups</h1><p class="subtle">Reusable questions that can be attached to any workspace.</p></div><button class="primary" id="new-group">＋ New group</button></div><div class="groups-list">${state.dashboard.groups.map((group)=>`<article class="group-card"><header><div><h3>${escapeHtml(group.name)}</h3><span class="subtle">${group.questions.length} question${group.questions.length === 1 ? "" : "s"} · ${group.scorerKind === "mean-v1" ? "Arithmetic mean" : "Custom JavaScript scorer"}${group.locked ? " · Locked after first run" : ""}</span></div><div class="row-actions"><button data-rename-group="${group.id}">Rename</button><button class="danger" data-delete-group="${group.id}">Delete</button></div></header>${group.description ? `<p>${escapeHtml(group.description)}</p>` : ""}<ol class="questions">${group.questions.map((question)=>`<li>${escapeHtml(question.text)} <span class="subtle">${question.key}</span></li>`).join("")}</ol></article>`).join("") || `<div class="empty-card">No groups yet.</div>`}</div></section>`;
     $("#new-group").onclick = () => $("#group-dialog").showModal();
@@ -392,8 +402,30 @@ function renderGroups() {
   });
 }
 
+function setSidebarUtility(activeId = null) {
+  ["manage-groups", "open-settings"].forEach((id) => $(`#${id}`).classList.toggle("active", id === activeId));
+}
+
+async function renderSettings() {
+  setSidebarUtility("open-settings");
+  state.workspace = null; state.compare = []; renderCompareTray();
+  const usage = await api("/api/usage");
+  await loadDashboard();
+  const total = usage.total;
+  const workspaceRows = usage.workspaces.map((workspace) => `<tr><td><button class="usage-workspace" data-usage-workspace="${workspace.id}">${escapeHtml(workspace.name)}</button></td><td>${count(workspace.runs)}</td><td>${count(workspace.inputTokens)}</td><td>${count(workspace.outputTokens)}</td><td>${count(workspace.totalTokens)}</td><td class="usage-cost">${money(workspace.cost)}</td></tr>`).join("");
+  const modelRows = usage.models.map((model) => `<tr><td><strong>${escapeHtml(model.model)}</strong><span class="subtle usage-provider">${escapeHtml(model.provider)}</span></td><td>${count(model.runs)}</td><td>${count(model.totalTokens)}</td><td class="usage-cost">${money(model.cost)}</td></tr>`).join("");
+  const coverage = total.runs ? `${count(total.reportedRuns)} of ${count(total.runs)} stored runs include usage data.` : "Usage will appear after the first Jev evaluation.";
+  main.innerHTML = `<section class="settings-page"><div class="topbar"><div><p class="eyebrow">Local app</p><h1>Settings</h1><p class="subtle">Jev usage and costs recorded in this database.</p></div></div>
+    <div class="usage-stats"><article><span>Reported cost</span><strong>${money(total.cost)}</strong></article><article><span>Evaluation runs</span><strong>${count(total.runs)}</strong></article><article><span>Input tokens</span><strong>${count(total.inputTokens)}</strong></article><article><span>Output tokens</span><strong>${count(total.outputTokens)}</strong></article></div>
+    <article class="table-card usage-card"><div class="table-title"><div><h2>By workspace</h2><span class="subtle">${coverage}</span></div></div><div class="table-scroll"><table><thead><tr><th>Workspace</th><th>Runs</th><th>Input</th><th>Output</th><th>Total tokens</th><th>Cost</th></tr></thead><tbody>${workspaceRows || `<tr><td colspan="6" class="usage-empty">No workspaces yet.</td></tr>`}</tbody></table></div></article>
+    <article class="table-card usage-card"><div class="table-title"><div><h2>By model</h2><span class="subtle">The exact Jev model version returned by OpenRouter.</span></div></div><div class="table-scroll"><table><thead><tr><th>Model</th><th>Runs</th><th>Total tokens</th><th>Cost</th></tr></thead><tbody>${modelRows || `<tr><td colspan="4" class="usage-empty">No reported model usage yet.</td></tr>`}</tbody></table></div></article>
+    <p class="usage-note">These totals come from OpenRouter usage attached to locally stored evaluation runs. Deleting a workspace or evaluation group also removes its runs from these totals.</p></section>`;
+  $$('[data-usage-workspace]').forEach((button) => button.onclick = () => openWorkspace(button.dataset.usageWorkspace));
+}
+
 $("#new-workspace").onclick = () => $("#workspace-dialog").showModal();
 $("#manage-groups").onclick = renderGroups;
+$("#open-settings").onclick = () => renderSettings().catch((error) => toast(error.message, true));
 $$('[data-close]').forEach((button) => button.onclick = () => button.closest("dialog").close());
 $("#workspace-form").addEventListener("submit", async (event) => { event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); try { const workspace = await api("/api/workspaces", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) }); formElement.reset(); $("#workspace-dialog").close(); state.group = null; state.question = ""; state.mode = null; await openWorkspace(workspace.id); } catch (error) { toast(error.message, true); } });
 $("#group-form").addEventListener("submit", async (event) => { event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); const data = Object.fromEntries(form); data.questions = data.questions.split(/\r?\n/).map((line)=>line.trim()).filter(Boolean); try { const group = await api("/api/groups", { method: "POST", body: JSON.stringify(data) }); formElement.reset(); $("#group-dialog").close(); toast(`Created ${group.name}`); if (state.workspace) { await api(`/api/workspaces/${state.workspace.workspace.id}/groups`, { method: "POST", body: JSON.stringify({ group: group.id }) }); await api(`/api/workspaces/${state.workspace.workspace.id}`, { method: "PATCH", body: JSON.stringify({ primaryGroup: group.id }) }); openWorkspace(state.workspace.workspace.id, { group: group.id, question: "" }); } else renderGroups(); } catch (error) { toast(error.message, true); } });
