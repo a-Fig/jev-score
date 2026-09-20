@@ -18,7 +18,7 @@ test("documents deduplicate by normalized content while every evaluation is reta
   assert.throws(() => addDocument(db, workspace.id, {}), /content is required/i);
   const first = addDocument(db, workspace.id, { title: "Original", content: "Hello\r\nworld" });
   const duplicate = addDocument(db, workspace.id, { title: "Copy", content: "Hello\nworld" });
-  assert.equal(duplicate.id, first.id); assert.equal(duplicate.deduplicated, true);
+  assert.equal(first.version, 0); assert.equal(duplicate.id, first.id); assert.equal(duplicate.version, 0); assert.equal(duplicate.deduplicated, true);
   await evaluateDocument(db, workspace.id, first.id, { evaluate: evaluator([50, 100]) });
   await evaluateDocument(db, workspace.id, first.id, { evaluate: evaluator([75, 100]) });
   const result = ranking(db, workspace.id);
@@ -37,6 +37,7 @@ test("max and median modes select different best documents", async () => {
   const workspace = createWorkspace(db, { name: "Role", contextContent: "Context", primaryGroup: group.id });
   const volatile = addDocument(db, workspace.id, { title: "Volatile", content: "A" });
   const steady = addDocument(db, workspace.id, { title: "Steady", content: "B" });
+  assert.deepEqual([volatile.version, steady.version], [0, 1]);
   await evaluateDocument(db, workspace.id, volatile.id, { evaluate: evaluator([100]) });
   await evaluateDocument(db, workspace.id, volatile.id, { evaluate: evaluator([20]) });
   await evaluateDocument(db, workspace.id, steady.id, { evaluate: evaluator([70]) });

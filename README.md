@@ -86,7 +86,7 @@ jev-score --help
 
 - **Context-centered workspaces** for a job posting, prompt, specification, rubric, or brief.
 - **Reusable evaluation groups** with stable questions that can be attached to multiple workspaces.
-- **Complete draft history** with titles, change summaries, parent revisions, and full document retrieval.
+- **Complete draft history** with stable `#0`, `#1`, `#2` version labels, titles, change summaries, parent revisions, and full retrieval.
 - **Content deduplication** by SHA-256, while every evaluation remains a separate run.
 - **Useful score summaries**: median, minimum, maximum, spread, run count, and question-level results.
 - **Flexible rankings** by overall score or one question, using highest-ever or median mode.

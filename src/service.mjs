@@ -157,13 +157,13 @@ function documentFromRow(row) {
   return {
     id: row.id, workspaceId: row.workspace_id, contentHash: row.content_hash, content: row.content,
     title: row.title, changeSummary: row.change_summary, metadata: parseJson(row.metadata_json) || {},
-    parentDocumentId: row.parent_document_id, isOriginal: Boolean(row.is_original), createdAt: row.created_at,
+    parentDocumentId: row.parent_document_id, isOriginal: Boolean(row.is_original), version: Number(row.version_number), createdAt: row.created_at,
   };
 }
 
 export function resolveDocument(db, workspaceRef, reference) {
   const workspace = resolveWorkspace(db, workspaceRef);
-  const row = db.prepare(`SELECT * FROM documents WHERE workspace_id=? AND (id=? OR lower(title)=lower(?)) ORDER BY id=? DESC LIMIT 1`).get(workspace.id, reference, reference, reference);
+  const row = db.prepare(`SELECT * FROM (SELECT d.*,row_number() OVER (ORDER BY d.rowid)-1 version_number FROM documents d WHERE workspace_id=?) WHERE id=? OR lower(title)=lower(?) ORDER BY id=? DESC LIMIT 1`).get(workspace.id, reference, reference, reference);
   if (!row) throw new Error(`Document not found in ${workspace.name}: ${reference}`);
   return documentFromRow(row);
 }
@@ -177,7 +177,7 @@ export function addDocument(db, workspaceRef, { content, title = "Untitled", cha
   const parent = parentDocument ? resolveDocument(db, workspace.id, parentDocument) : null;
   return inTransaction(db, () => {
     const existing = db.prepare(`SELECT * FROM documents WHERE workspace_id=? AND content_hash=?`).get(workspace.id, contentHash);
-    if (existing) return { ...documentFromRow(existing), deduplicated: true };
+    if (existing) return { ...resolveDocument(db, workspace.id, existing.id), deduplicated: true };
     const count = db.prepare(`SELECT count(*) count FROM documents WHERE workspace_id=?`).get(workspace.id).count;
     const isOriginal = original || count === 0;
     const documentId = id("doc");
@@ -189,7 +189,7 @@ export function addDocument(db, workspaceRef, { content, title = "Untitled", cha
 
 export function listDocuments(db, workspaceRef, { includeContent = false } = {}) {
   const workspace = resolveWorkspace(db, workspaceRef);
-  return db.prepare(`SELECT * FROM documents WHERE workspace_id=? ORDER BY created_at`).all(workspace.id).map((row) => {
+  return db.prepare(`SELECT * FROM (SELECT d.*,row_number() OVER (ORDER BY d.rowid)-1 version_number FROM documents d WHERE workspace_id=?) ORDER BY version_number`).all(workspace.id).map((row) => {
     const item = documentFromRow(row);
     if (!includeContent) delete item.content;
     return item;
@@ -281,7 +281,7 @@ export function ranking(db, workspaceRef, { group: groupRef = null, question = n
     const delta = originalBaseline == null ? null : round(value - originalBaseline);
     frontier = Math.max(frontier, delta ?? value);
     const document = documents.find((item) => item.id === row.document_id);
-    return { runId: row.run_id, documentId: row.document_id, documentTitle: document?.title, createdAt: row.created_at, delta, frontier: round(frontier) };
+    return { runId: row.run_id, documentId: row.document_id, documentVersion: document?.version, documentTitle: document?.title, createdAt: row.created_at, delta, frontier: round(frontier) };
   });
   return { workspace: { id: workspace.id, name: workspace.name }, group: { id: group.id, name: group.name }, question: questionInfo, mode: rankingMode, items, timeline };
 }
