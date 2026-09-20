@@ -19,11 +19,11 @@ main { min-width: 0; }
 .table-toggle { margin-left: auto; white-space: nowrap; }
 .version-tag { display: inline-block; margin-right: 7px; color: var(--accent); font: 700 11px/1 ui-monospace,SFMono-Regular,Consolas,monospace; vertical-align: .08em; }
 .matrix-table { width: max-content; min-width: 100%; }
-.matrix-table.transposed { width: auto; min-width: 0; table-layout: fixed; }
-.transposed .metric-width { width: 196px; }
+.matrix-table.transposed { width: 100%; min-width: var(--matrix-min-width); table-layout: fixed; }
+.transposed .metric-width { width: auto; }
 .transposed .document-width { width: 124px; }
 .transposed th,.transposed td { padding: 8px 10px; }
-.transposed .metric-column { position: sticky; left: 0; width: 196px; max-width: 196px; background: #fff; z-index: 2; }
+.transposed .metric-column { position: sticky; left: 0; background: #fff; z-index: 2; }
 .transposed thead .metric-column { background: #fafaf8; z-index: 4; }
 .transposed .matrix-document { width: 124px; max-width: 124px; min-width: 124px; padding: 10px 7px 8px; text-align: center; text-transform: none; letter-spacing: 0; background: #fafaf8; }
 .matrix-document-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); font: 750 14px/1 ui-monospace,SFMono-Regular,Consolas,monospace; }
@@ -37,8 +37,7 @@ main { min-width: 0; }
 .transposed .overall-row td { background: #f8f9f6; font-weight: 700; }
 .transposed .overall-row .metric-column { z-index: 3; }
 .transposed .runs-row td { color: var(--muted); font-size: 11px; }
-.metric-label { position: relative; display: block; width: 176px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; outline: none; }
-.metric-label:hover,.metric-label:focus { position: absolute; left: 9px; top: 50%; z-index: 8; width: 430px; transform: translateY(-50%); padding: 9px 11px; overflow: visible; white-space: normal; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 8px 28px rgba(24,28,20,.16); color: var(--ink); line-height: 1.45; }
+.metric-label { display: block; white-space: normal; line-height: 1.35; }
 .row-actions .selected,
 .viewer-actions .selected { color: var(--accent); background: var(--accent-soft); border-color: #ced9fb; }
 
@@ -84,15 +83,12 @@ main { min-width: 0; }
 .comparison-section-title { display: flex; justify-content: space-between; align-items: baseline; gap: 15px; margin-bottom: 9px; }
 .comparison-section-title h3 { margin: 0; font-size: 15px; }
 .compare-view-toggle { margin-left: auto; }
-.paired-scores { border-top: 1px solid var(--line); }
-.score-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; }
-.score-lane { position: relative; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 18px; min-width: 0; padding: 9px 18px; border-bottom: 1px solid var(--line); }
-.score-lane:first-child { border-right: 1px solid var(--line); }
-.score-lane strong { min-width: 46px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
-.score-metric-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4c5049; font-size: 12px; outline: none; }
-.score-metric-label:hover,.score-metric-label:focus { position: absolute; left: 10px; top: 50%; z-index: 5; width: calc(100% - 70px); transform: translateY(-50%); padding: 8px 10px; overflow: visible; white-space: normal; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 7px 22px rgba(24,28,20,.14); color: var(--ink); line-height: 1.4; }
-.overall-pair .score-lane { background: #fafaf8; }
-.overall-pair .score-lane strong,.overall-pair .score-metric-label { color: var(--ink); font-weight: 700; }
+.comparison-score-table { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; }
+.comparison-score-table table { table-layout: fixed; }
+.comparison-score-table th { border-top: 0; background: #fafaf8; }
+.comparison-score-table th:nth-child(2),.comparison-score-table th:nth-child(3),.comparison-score-table td:nth-child(2),.comparison-score-table td:nth-child(3) { width: 92px; text-align: right; font-variant-numeric: tabular-nums; }
+.comparison-score-table td:first-child { line-height: 1.4; }
+.comparison-score-table .overall-row td { background: #fafaf8; font-weight: 700; }
 .compare-empty { height: 100px; }
 .compare-documents { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .compare-documents > article { min-width: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #fff; }
