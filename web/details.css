@@ -36,10 +36,13 @@ main { min-width: 0; }
 .matrix-actions button:hover { color: var(--ink); }
 .matrix-actions .selected { color: var(--accent); }
 .matrix-score { text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; }
-.transposed .overall-row td { background: #f8f9f6; font-weight: 700; }
+.transposed .overall-row td { background: #f8f9f6; }
+.transposed .overall-row .metric-column,.matrix-score.row-best { font-weight: 800; }
 .transposed .overall-row .metric-column { z-index: 3; }
 .transposed .runs-row td { color: var(--muted); font-size: 11px; }
 .metric-label { display: block; white-space: normal; line-height: 1.35; }
+.score-range line { stroke: #7794e7; stroke-width: 1.5; }
+.x-label { fill: var(--muted); font: 10px ui-monospace,SFMono-Regular,Consolas,monospace; text-anchor: middle; }
 .row-actions .selected,
 .viewer-actions .selected { color: var(--accent); background: var(--accent-soft); border-color: #ced9fb; }
 

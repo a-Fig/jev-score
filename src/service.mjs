@@ -276,13 +276,19 @@ export function ranking(db, workspaceRef, { group: groupRef = null, question = n
   items.forEach((item, index) => { item.rank = item.rankScore == null ? null : index + 1; item.isBest = item.id === best?.id; item.delta = item.rankScore == null || original?.rankScore == null ? null : round(item.rankScore - original.rankScore); });
   const originalBaseline = original?.rankScore ?? null;
   let frontier = -Infinity;
-  const timeline = rows.sort((a, b) => a.created_at.localeCompare(b.created_at)).map((row) => {
-    const value = Number(row.value);
-    const delta = originalBaseline == null ? null : round(value - originalBaseline);
-    frontier = Math.max(frontier, delta ?? value);
-    const document = documents.find((item) => item.id === row.document_id);
-    return { runId: row.run_id, documentId: row.document_id, documentVersion: document?.version, documentTitle: document?.title, createdAt: row.created_at, delta, frontier: round(frontier) };
-  });
+  const timeline = [...items]
+    .filter((item) => item.rankScore != null)
+    .sort((a, b) => a.version - b.version)
+    .map((item) => {
+      const delta = originalBaseline == null ? null : round(item.rankScore - originalBaseline);
+      const minDelta = originalBaseline == null ? null : round(item.min - originalBaseline);
+      const maxDelta = originalBaseline == null ? null : round(item.max - originalBaseline);
+      frontier = Math.max(frontier, delta ?? item.rankScore);
+      return {
+        documentId: item.id, documentVersion: item.version, documentTitle: item.title,
+        runs: item.runs, delta, minDelta, maxDelta, frontier: round(frontier),
+      };
+    });
   return { workspace: { id: workspace.id, name: workspace.name }, group: { id: group.id, name: group.name }, question: questionInfo, mode: rankingMode, items, timeline };
 }
 

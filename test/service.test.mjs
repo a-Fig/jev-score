@@ -41,8 +41,18 @@ test("max and median modes select different best documents", async () => {
   await evaluateDocument(db, workspace.id, volatile.id, { evaluate: evaluator([100]) });
   await evaluateDocument(db, workspace.id, volatile.id, { evaluate: evaluator([20]) });
   await evaluateDocument(db, workspace.id, steady.id, { evaluate: evaluator([70]) });
-  assert.equal(ranking(db, workspace.id, { mode: "max" }).items[0].title, "Volatile");
-  assert.equal(ranking(db, workspace.id, { mode: "median" }).items[0].title, "Steady"); db.close();
+  const maximum = ranking(db, workspace.id, { mode: "max" });
+  assert.equal(maximum.items[0].title, "Volatile");
+  assert.deepEqual(maximum.timeline, [
+    { documentId: volatile.id, documentVersion: 0, documentTitle: "Volatile", runs: 2, delta: 0, minDelta: -80, maxDelta: 0, frontier: 0 },
+    { documentId: steady.id, documentVersion: 1, documentTitle: "Steady", runs: 1, delta: -30, minDelta: -30, maxDelta: -30, frontier: 0 },
+  ]);
+  const middle = ranking(db, workspace.id, { mode: "median" });
+  assert.equal(middle.items[0].title, "Steady");
+  assert.deepEqual(middle.timeline, [
+    { documentId: volatile.id, documentVersion: 0, documentTitle: "Volatile", runs: 2, delta: 0, minDelta: -40, maxDelta: 40, frontier: 0 },
+    { documentId: steady.id, documentVersion: 1, documentTitle: "Steady", runs: 1, delta: 10, minDelta: 10, maxDelta: 10, frontier: 10 },
+  ]); db.close();
 });
 
 test("custom scorers can invert lower-is-better questions and group deletion cascades runs", async () => {

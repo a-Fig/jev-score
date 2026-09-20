@@ -200,14 +200,23 @@ function renderEmpty() {
 function chartSvg(points) {
   if (!points.length || points.every((point) => point.delta == null)) return `<div class="chart-empty">Run a few evaluations to see progress.</div>`;
   const usable = points.filter((point) => point.delta != null);
-  const width = 700, height = 210, pad = 24;
-  let min = Math.min(0, ...usable.map((point) => Math.min(point.delta, point.frontier)));
-  let max = Math.max(0, ...usable.map((point) => Math.max(point.delta, point.frontier)));
+  const width = 700, height = 210, side = 28, top = 16, bottom = 34;
+  let min = Math.min(0, ...usable.flatMap((point) => [point.delta, point.frontier, point.minDelta ?? point.delta]));
+  let max = Math.max(0, ...usable.flatMap((point) => [point.delta, point.frontier, point.maxDelta ?? point.delta]));
   if (min === max) { min -= 1; max += 1; }
-  const x = (index) => pad + (usable.length === 1 ? (width - pad * 2) / 2 : index * (width - pad * 2) / (usable.length - 1));
-  const y = (value) => height - pad - ((value - min) / (max - min)) * (height - pad * 2);
-  const line = (key) => usable.map((point, index) => `${index ? "L" : "M"}${x(index)},${y(point[key])}`).join(" ");
-  return `<svg id="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Score change over evaluation runs"><line class="axis" x1="${pad}" x2="${width-pad}" y1="${y(0)}" y2="${y(0)}"/><path class="frontier-line" d="${line("frontier")}"/><path class="chart-line" d="${line("delta")}"/>${usable.map((point,index)=>`<circle class="dot" cx="${x(index)}" cy="${y(point.delta)}" r="4"><title>#${point.documentVersion} · ${escapeHtml(point.documentTitle)}: ${point.delta > 0 ? "+" : ""}${point.delta}</title></circle>`).join("")}</svg>`;
+  const versions = usable.map((point) => point.documentVersion);
+  const firstVersion = Math.min(...versions), lastVersion = Math.max(...versions);
+  const x = (version) => side + (firstVersion === lastVersion ? (width - side * 2) / 2 : ((version - firstVersion) / (lastVersion - firstVersion)) * (width - side * 2));
+  const y = (value) => height - bottom - ((value - min) / (max - min)) * (height - top - bottom);
+  const line = (key) => usable.map((point, index) => `${index ? "L" : "M"}${x(point.documentVersion)},${y(point[key])}`).join(" ");
+  const signed = (value) => `${value > 0 ? "+" : ""}${score(value)}`;
+  const ranges = usable.filter((point) => point.runs > 1).map((point) => {
+    const center = x(point.documentVersion), low = y(point.minDelta ?? point.delta), high = y(point.maxDelta ?? point.delta);
+    return `<g class="score-range"><title>#${point.documentVersion} · ${escapeHtml(point.documentTitle)}: ${signed(point.minDelta ?? point.delta)} to ${signed(point.maxDelta ?? point.delta)} across ${point.runs} runs</title><line x1="${center}" x2="${center}" y1="${high}" y2="${low}"/><line x1="${center - 5}" x2="${center + 5}" y1="${high}" y2="${high}"/><line x1="${center - 5}" x2="${center + 5}" y1="${low}" y2="${low}"/></g>`;
+  }).join("");
+  const labels = usable.map((point) => `<text class="x-label" x="${x(point.documentVersion)}" y="${height - 8}">#${point.documentVersion}</text>`).join("");
+  const dots = usable.map((point) => `<circle class="dot" cx="${x(point.documentVersion)}" cy="${y(point.delta)}" r="4"><title>#${point.documentVersion} · ${escapeHtml(point.documentTitle)}: ${signed(point.delta)}</title></circle>`).join("");
+  return `<svg id="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Score change by document version"><line class="axis" x1="${side}" x2="${width-side}" y1="${y(0)}" y2="${y(0)}"/>${ranges}<path class="frontier-line" d="${line("frontier")}"/><path class="chart-line" d="${line("delta")}"/>${dots}${labels}</svg>`;
 }
 
 function documentName(document) {
@@ -258,7 +267,12 @@ function metricsTable(workspace, matrix, canEvaluate) {
   }).map(({ document }) => document);
   const documentHeader = (document) => `<th class="matrix-document" aria-label="${escapeHtml(versionTitle(document))}"><div class="matrix-document-title" data-document-title="${escapeHtml(document.title)}" tabindex="0">${versionLabel(document)}</div><div class="matrix-badges">${document.isOriginal ? `<span class="badge original">Original</span>` : ""}${document.isBest ? `<span class="badge best">Best</span>` : ""}</div><div class="matrix-actions"><button data-view="${document.id}" title="View ${escapeHtml(document.title)}">View</button>${compareButton(document)}${canEvaluate ? `<button data-evaluate="${document.id}" title="Evaluate ${escapeHtml(document.title)}">Run</button>` : ""}</div></th>`;
   const metricLabel = (label) => `<span class="metric-label">${escapeHtml(label)}</span>`;
-  return `<div class="table-scroll"><table class="matrix-table transposed" style="--matrix-min-width:${360 + orderedRows.length * 124}px"><colgroup><col class="metric-width">${orderedRows.map(() => `<col class="document-width">`).join("")}</colgroup><thead><tr><th class="metric-column">Metric</th>${orderedRows.map(documentHeader).join("")}</tr></thead><tbody><tr class="overall-row"><td class="metric-column">${metricLabel("Overall")}</td>${orderedRows.map((document) => `<td class="matrix-score score">${score(document.overallScore)}</td>`).join("")}</tr>${matrix.questions.map((question) => `<tr><td class="metric-column">${metricLabel(question.text)}</td>${orderedRows.map((document) => `<td class="matrix-score">${score(document.scores[question.key])}</td>`).join("")}</tr>`).join("")}<tr class="runs-row"><td class="metric-column">${metricLabel("Runs")}</td>${orderedRows.map((document) => `<td class="matrix-score">${document.runs}</td>`).join("")}</tr></tbody></table></div>`;
+  const scoreCells = (values) => {
+    const finite = values.filter(Number.isFinite);
+    const best = finite.length ? Math.max(...finite) : null;
+    return values.map((value) => `<td class="matrix-score ${value != null && value === best ? "row-best" : ""}">${score(value)}</td>`).join("");
+  };
+  return `<div class="table-scroll"><table class="matrix-table transposed" style="--matrix-min-width:${360 + orderedRows.length * 124}px"><colgroup><col class="metric-width">${orderedRows.map(() => `<col class="document-width">`).join("")}</colgroup><thead><tr><th class="metric-column">Metric</th>${orderedRows.map(documentHeader).join("")}</tr></thead><tbody><tr class="overall-row"><td class="metric-column">${metricLabel("Overall")}</td>${scoreCells(orderedRows.map((document) => document.overallScore))}</tr>${matrix.questions.map((question) => `<tr><td class="metric-column">${metricLabel(question.text)}</td>${scoreCells(orderedRows.map((document) => document.scores[question.key]))}</tr>`).join("")}<tr class="runs-row"><td class="metric-column">${metricLabel("Runs")}</td>${orderedRows.map((document) => `<td class="matrix-score">${document.runs}</td>`).join("")}</tr></tbody></table></div>`;
 }
 
 function renderWorkspace() {
@@ -277,7 +291,7 @@ function renderWorkspace() {
     <details class="context-card"><summary><span>${escapeHtml(workspace.contextTitle)}</span><span class="subtle">View context</span></summary><pre>${escapeHtml(workspace.contextContent)}</pre></details>
     ${groups.length ? `<div class="toolbar" style="justify-content:flex-start;margin:16px 0"><select id="group-select">${options}</select><select id="metric-select"><option value="">Overall score</option>${questionOptions}</select><div class="segmented"><button data-mode="max" class="${result?.mode === "max" ? "active" : ""}">Highest</button><button data-mode="median" class="${result?.mode === "median" ? "active" : ""}">Median</button></div>${attachable.length ? `<select id="attach-select"><option value="">＋ Attach group…</option>${attachable.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>` : `<div class="empty-card"><strong>No evaluation group attached</strong><p class="subtle">Create a reusable group or attach one from the group library.</p><button class="primary" id="workspace-new-group">Create group</button>${allGroups.length ? `<select id="attach-select" style="margin-top:10px"><option value="">Attach existing…</option>${allGroups.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>`}
     ${result ? `<div class="grid">
-      <article class="chart-card"><div class="card-head"><div><h2>Progress from original</h2><p>Each run and the best-so-far frontier · percentage points</p></div><span class="metric-note">${escapeHtml(result.question?.text || "Overall")}</span></div>${chartSvg(result.timeline)}</article>
+      <article class="chart-card"><div class="card-head"><div><h2>Progress from original</h2><p>Document score (solid) · best so far (dotted) · run range (I)</p></div><span class="metric-note">${escapeHtml(result.question?.text || "Overall")} · percentage points</span></div>${chartSvg(result.timeline)}</article>
       <article class="chart-card"><div class="card-head"><div><h2>Current leader</h2><p>${result.mode === "max" ? "Highest score ever" : "Median across runs"}</p></div>${best ? `<span class="badge best">Best</span>` : ""}</div>${best ? `<h3 style="font-size:22px;margin:24px 0 4px"><span class="version-tag">${versionLabel(best)}</span>${escapeHtml(best.title)}</h3><div class="stats"><div class="stat"><strong>${score(best.rankScore)}</strong><span>rank score</span></div><div class="stat"><strong>${best.runs}</strong><span>runs</span></div><div class="stat"><strong>${best.runs > 1 ? score(best.spread) : "—"}</strong><span>spread</span></div></div>` : `<div class="chart-empty">No scores yet.</div>`}</article>
     </div>` : ""}
     <article class="table-card" style="margin-top:16px"><div class="table-title"><div><h2>Documents</h2>${active ? `<span class="subtle">${escapeHtml(active.name)} · ${result.mode === "max" ? "highest" : "median"}</span>` : ""}</div>${matrix ? `<div class="segmented table-toggle"><button data-table-view="metrics" class="${state.tableView === "metrics" ? "active" : ""}">All metrics</button><button data-table-view="ranking" class="${state.tableView === "ranking" ? "active" : ""}">Ranking</button></div>` : ""}</div>
