@@ -21,6 +21,6 @@ jev-score group create \
   --scorer ./scorer.mjs
 ```
 
-Jev Score stores the source and SHA-256 hash with the group. It executes the function in a short-lived Node worker with a one-second timeout. This protects the app from accidental infinite loops; it is not a security sandbox, so only use scorer code you trust.
+Jev Score stores the source and SHA-256 hash with the group. It executes the function in a short-lived Node worker with a three-second timeout. This protects the app from accidental infinite loops; it is not a security sandbox, so only use scorer code you trust.
 
 Questions and scorer code become immutable after the group's first evaluation. If the scorer throws, times out, or returns an invalid value, the run keeps its individual Jev scores with an `aggregation_error` status and is excluded from overall rankings. Create a new group to change the formula.
