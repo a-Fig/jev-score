@@ -17,6 +17,12 @@
 main { min-width: 0; }
 .side-bottom { display: grid; gap: 6px; }
 .side-bottom .active { background: #fff; border-color: var(--line); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.workspace-menu { position: relative; }
+.workspace-menu summary { display: grid; place-items: center; min-width: 42px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; background: transparent; cursor: pointer; list-style: none; }
+.workspace-menu summary::-webkit-details-marker { display: none; }
+.workspace-menu summary:hover,.workspace-menu[open] summary { background: #fff; }
+.workspace-menu > div { position: absolute; z-index: 12; top: calc(100% + 6px); right: 0; min-width: 170px; padding: 6px; border: 1px solid var(--line); border-radius: 9px; background: #fff; box-shadow: 0 10px 30px rgba(24,28,20,.14); }
+.workspace-menu .danger { width: 100%; text-align: left; }
 .table-title > div:first-child { align-items: baseline; }
 .table-toggle { margin-left: auto; white-space: nowrap; }
 .version-tag { display: inline-block; margin-right: 7px; color: var(--accent); font: 700 11px/1 ui-monospace,SFMono-Regular,Consolas,monospace; vertical-align: .08em; }
