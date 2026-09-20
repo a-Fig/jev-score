@@ -26,7 +26,9 @@ main { min-width: 0; }
 .transposed .metric-column { position: sticky; left: 0; background: #fff; z-index: 2; }
 .transposed thead .metric-column { background: #fafaf8; z-index: 4; }
 .transposed .matrix-document { width: 124px; max-width: 124px; min-width: 124px; padding: 10px 7px 8px; text-align: center; text-transform: none; letter-spacing: 0; background: #fafaf8; }
-.matrix-document-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); font: 750 14px/1 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.matrix-document-title { position: relative; overflow: visible; white-space: nowrap; color: var(--accent); font: 750 14px/1 ui-monospace,SFMono-Regular,Consolas,monospace; outline: none; cursor: default; }
+.matrix-document-title::after { content: attr(data-document-title); position: absolute; z-index: 20; top: calc(100% + 7px); left: 50%; width: max-content; max-width: 260px; transform: translateX(-50%) translateY(-3px); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: #232521; color: #fff; box-shadow: 0 8px 24px rgba(24,28,20,.18); font: 500 11px/1.35 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; white-space: normal; overflow-wrap: anywhere; opacity: 0; pointer-events: none; transition: opacity .12s ease,transform .12s ease; }
+.matrix-document-title:hover::after,.matrix-document-title:focus::after { opacity: 1; transform: translateX(-50%) translateY(0); }
 .matrix-badges { display: flex; justify-content: center; gap: 3px; min-height: 18px; margin-top: 4px; }
 .matrix-badges .badge { padding: 2px 5px; font-size: 8px; }
 .matrix-actions { display: flex; justify-content: center; gap: 5px; margin-top: 5px; white-space: nowrap; }
