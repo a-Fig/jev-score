@@ -169,7 +169,9 @@ function rankingTable(workspace, documents, canEvaluate) {
 
 function metricsTable(workspace, matrix, canEvaluate) {
   if (!matrix?.rows.length) return `<div class="chart-empty">Add the original document to begin.</div>`;
-  return `<div class="table-scroll"><table class="matrix-table"><thead><tr><th>Document</th><th>Overall</th>${matrix.questions.map((question) => `<th title="${escapeHtml(question.text)}">${escapeHtml(question.text)}</th>`).join("")}<th>Runs</th><th></th></tr></thead><tbody>${matrix.rows.map((document) => `<tr><td>${documentName(document)}${compareButton(document, "inline-compare")}</td><td class="score">${score(document.overallScore)}</td>${matrix.questions.map((question) => `<td>${score(document.scores[question.key])}</td>`).join("")}<td>${document.runs}</td><td>${documentActions(workspace, document, canEvaluate, false)}</td></tr>`).join("")}</tbody></table></div>`;
+  const documentHeader = (document) => `<th class="matrix-document"><div class="matrix-document-title" title="${escapeHtml(document.title)}">${escapeHtml(document.title)}</div><div class="matrix-badges">${document.isOriginal ? `<span class="badge original">Original</span>` : ""}${document.isBest ? `<span class="badge best">Best</span>` : ""}</div><div class="matrix-actions"><button data-view="${document.id}">View</button>${compareButton(document)}${canEvaluate ? `<button data-evaluate="${document.id}">Run</button>` : ""}</div></th>`;
+  const metricLabel = (label) => `<span class="metric-label" tabindex="0">${escapeHtml(label)}</span>`;
+  return `<div class="table-scroll"><table class="matrix-table transposed"><colgroup><col class="metric-width">${matrix.rows.map(() => `<col class="document-width">`).join("")}</colgroup><thead><tr><th class="metric-column">Metric</th>${matrix.rows.map(documentHeader).join("")}</tr></thead><tbody><tr class="overall-row"><td class="metric-column">${metricLabel("Overall")}</td>${matrix.rows.map((document) => `<td class="matrix-score score">${score(document.overallScore)}</td>`).join("")}</tr>${matrix.questions.map((question) => `<tr><td class="metric-column">${metricLabel(question.text)}</td>${matrix.rows.map((document) => `<td class="matrix-score">${score(document.scores[question.key])}</td>`).join("")}</tr>`).join("")}<tr class="runs-row"><td class="metric-column">${metricLabel("Runs")}</td>${matrix.rows.map((document) => `<td class="matrix-score">${document.runs}</td>`).join("")}</tr></tbody></table></div>`;
 }
 
 function renderWorkspace() {
@@ -230,10 +232,7 @@ function comparisonScoreRows(leftId, rightId) {
     { label: "Overall", left: left?.overallScore, right: right?.overallScore, overall: true },
     ...matrix.questions.map((question) => ({ label: question.text, left: left?.scores[question.key], right: right?.scores[question.key] })),
   ];
-  return `<div class="compare-score-scroll"><table class="compare-scores"><thead><tr><th>Metric</th><th>${escapeHtml(left?.title || "Left")}</th><th>${escapeHtml(right?.title || "Right")}</th><th>Δ</th></tr></thead><tbody>${rows.map((row) => {
-    const delta = row.left == null || row.right == null ? null : Number(row.right) - Number(row.left);
-    return `<tr class="${row.overall ? "overall-row" : ""}"><td>${escapeHtml(row.label)}</td><td>${score(row.left)}</td><td>${score(row.right)}</td><td class="${delta > 0 ? "delta" : delta < 0 ? "negative" : ""}">${delta == null ? "—" : `${delta > 0 ? "+" : ""}${score(delta)}`}</td></tr>`;
-  }).join("")}</tbody></table></div>`;
+  return `<div class="paired-scores">${rows.map((row) => `<div class="score-pair ${row.overall ? "overall-pair" : ""}"><div class="score-lane"><span class="score-metric-label" tabindex="0">${escapeHtml(row.label)}</span><strong>${score(row.left)}</strong></div><div class="score-lane"><span class="score-metric-label" tabindex="0">${escapeHtml(row.label)}</span><strong>${score(row.right)}</strong></div></div>`).join("")}</div>`;
 }
 
 async function openComparison() {
@@ -245,7 +244,7 @@ async function openComparison() {
     $("#comparison").innerHTML = `<div class="comparison-shell">
       <div class="comparison-top"><div><p class="eyebrow">Document comparison</p><h2>Compare drafts</h2><p class="subtle">${escapeHtml(state.workspace.matrix?.group.name || "Scores unavailable")} · ${state.mode === "median" ? "median" : "highest"} scores</p></div><div class="viewer-actions"><button class="ghost" id="swap-comparison">Swap</button><button class="icon" id="close-comparison" aria-label="Close">×</button></div></div>
       <div class="compare-pickers"><label>Left document<select data-compare-picker="0">${options(left.id)}</select></label><label>Right document<select data-compare-picker="1">${options(right.id)}</select></label></div>
-      <section class="comparison-section"><div class="comparison-section-title"><h3>Scores</h3><span class="subtle">Δ shows right minus left</span></div>${comparisonScoreRows(left.id, right.id)}</section>
+      <section class="comparison-section"><div class="comparison-section-title"><h3>Scores</h3><span class="subtle">Left and right stay aligned by metric</span></div>${comparisonScoreRows(left.id, right.id)}</section>
       <section class="comparison-section"><div class="comparison-section-title"><h3>Documents</h3><span class="subtle">Rendered Markdown</span></div><div class="compare-documents"><article><header><strong>${escapeHtml(left.title)}</strong><a href="/api/workspaces/${workspace.id}/documents/${left.id}?download">Download</a></header><div class="markdown-body">${markdownToHtml(left.content)}</div></article><article><header><strong>${escapeHtml(right.title)}</strong><a href="/api/workspaces/${workspace.id}/documents/${right.id}?download">Download</a></header><div class="markdown-body">${markdownToHtml(right.content)}</div></article></div></section>
     </div>`;
     $("#close-comparison").onclick = () => $("#compare-dialog").close();
