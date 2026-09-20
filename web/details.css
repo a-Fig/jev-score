@@ -75,6 +75,8 @@ main { min-width: 0; }
 .usage-note { max-width: 720px; margin: 14px 4px 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .row-actions .selected,
 .viewer-actions .selected { color: var(--accent); background: var(--accent-soft); border-color: #ced9fb; }
+.evaluate-all { margin-left: auto; white-space: nowrap; }
+.evaluate-all:disabled { cursor: default; }
 
 .document-mode { display: flex; justify-content: flex-end; margin: 18px 0 8px; }
 .document-body { border: 1px solid var(--line); border-radius: 8px; padding: 24px 28px; max-height: 56vh; overflow: auto; background: #fff; }

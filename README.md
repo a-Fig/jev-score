@@ -119,6 +119,7 @@ jev-score ui
 
 - **Every draft.** Unique content is stored once, numbered `#0`, `#1`, `#2`, and optionally linked to its parent revision.
 - **Every run.** Re-score the same document without duplicating it; Jev Score keeps each probabilistic result.
+- **Batch catch-up.** Evaluate every document that has no completed run for the active group with one button.
 - **Every criterion.** Compare documents in a compact question-by-document score table or rank by one question.
 - **Actual changes.** Compare two rendered documents left and right, then switch to a GitHub-style line diff.
 - **Progress.** See improvement from the original, the best-so-far frontier, highest and median rankings, ranges, and run counts.

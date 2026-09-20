@@ -40,9 +40,24 @@ test("documents deduplicate by normalized content while every evaluation is reta
   assert.deepEqual({ runs: result.items[0].runs, min: result.items[0].min, max: result.items[0].max, median: result.items[0].median }, { runs: 2, min: 75, max: 87.5, median: 81.3 });
   const matrix = scoreMatrix(db, workspace.id, { mode: "median" });
   assert.equal(matrix.rows[0].overallScore, 81.3);
+  assert.deepEqual({ runs: matrix.rows[0].runs, completedRuns: matrix.rows[0].completedRuns, evaluated: matrix.rows[0].evaluated }, { runs: 2, completedRuns: 2, evaluated: true });
   assert.deepEqual(Object.values(matrix.rows[0].scores), [62.5, 100]);
   assert.equal(documentDetail(db, workspace.id, first.id).runs[0].scores.length, 2);
   assert.equal(resolveGroup(db, group.id).locked, true); db.close();
+});
+
+test("failed Jev attempts remain unevaluated for batch evaluation", async () => {
+  const db = database();
+  const group = createGroup(db, { name: "Quality", questions: ["Clear"] });
+  const workspace = createWorkspace(db, { name: "Draft", contextContent: "Prompt", primaryGroup: group.id });
+  const document = addDocument(db, workspace.id, { title: "Draft", content: "Text" });
+  await assert.rejects(evaluateDocument(db, workspace.id, document.id, { evaluate: async () => { throw new Error("Provider unavailable"); } }), /provider unavailable/i);
+  let row = scoreMatrix(db, workspace.id).rows[0];
+  assert.deepEqual({ runs: row.runs, completedRuns: row.completedRuns, evaluated: row.evaluated }, { runs: 1, completedRuns: 0, evaluated: false });
+  await evaluateDocument(db, workspace.id, document.id, { evaluate: evaluator([80]) });
+  row = scoreMatrix(db, workspace.id).rows[0];
+  assert.deepEqual({ runs: row.runs, completedRuns: row.completedRuns, evaluated: row.evaluated }, { runs: 2, completedRuns: 1, evaluated: true });
+  db.close();
 });
 
 test("max and median modes select different best documents", async () => {

@@ -1,7 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const main = $("#main");
-const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics", compare: [], comparisonView: "rendered", diffExpanded: false };
+const state = { dashboard: null, workspace: null, group: null, question: "", mode: null, tableView: "metrics", compare: [], comparisonView: "rendered", diffExpanded: false, batch: null, evaluating: null };
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options.headers } });
@@ -321,11 +321,14 @@ function renderWorkspace() {
   const best = evaluated[0];
   const lowerSelected = result?.question?.direction === "lower";
   const extremeLabel = lowerSelected ? "lowest" : "highest";
+  const unevaluated = matrix?.rows.filter((document) => !document.evaluated) || [];
+  const currentBatch = state.batch && state.batch.workspaceId === workspace.id && state.batch.groupId === active?.id;
+  const batchLabel = currentBatch ? `Evaluating ${state.batch.current}/${state.batch.total}` : state.batch || state.evaluating ? `Evaluation in progress` : unevaluated.length ? `Evaluate all unevaluated (${unevaluated.length})` : "All evaluated";
   main.innerHTML = `<section>
     <div class="topbar"><div><p class="eyebrow">Workspace</p><h1>${escapeHtml(workspace.name)}</h1><p class="subtle">${documents.length} document${documents.length === 1 ? "" : "s"} · ${workspace.runCount} evaluation${workspace.runCount === 1 ? "" : "s"}</p></div>
       <div class="toolbar"><button class="ghost" id="upload">＋ Add document</button><details class="workspace-menu" id="workspace-menu"><summary aria-label="Workspace actions">•••</summary><div><button class="danger" id="delete-workspace">Delete workspace</button></div></details></div></div>
     <details class="context-card"><summary><span>${escapeHtml(workspace.contextTitle)}</span><span class="subtle">View context</span></summary><pre>${escapeHtml(workspace.contextContent)}</pre></details>
-    ${groups.length ? `<div class="toolbar" style="justify-content:flex-start;margin:16px 0"><select id="group-select">${options}</select><select id="metric-select"><option value="">Overall score</option>${questionOptions}</select><div class="segmented"><button data-mode="max" class="${result?.mode === "max" ? "active" : ""}">${lowerSelected ? "Lowest" : "Highest"}</button><button data-mode="median" class="${result?.mode === "median" ? "active" : ""}">Median</button></div>${attachable.length ? `<select id="attach-select"><option value="">＋ Attach group…</option>${attachable.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>` : `<div class="empty-card"><strong>No evaluation group attached</strong><p class="subtle">Create a reusable group or attach one from the group library.</p><button class="primary" id="workspace-new-group">Create group</button>${allGroups.length ? `<select id="attach-select" style="margin-top:10px"><option value="">Attach existing…</option>${allGroups.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>`}
+    ${groups.length ? `<div class="toolbar" style="justify-content:flex-start;margin:16px 0"><select id="group-select">${options}</select><select id="metric-select"><option value="">Overall score</option>${questionOptions}</select><div class="segmented"><button data-mode="max" class="${result?.mode === "max" ? "active" : ""}">${lowerSelected ? "Lowest" : "Highest"}</button><button data-mode="median" class="${result?.mode === "median" ? "active" : ""}">Median</button></div>${attachable.length ? `<select id="attach-select"><option value="">＋ Attach group…</option>${attachable.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}<button class="primary evaluate-all" id="evaluate-all" ${state.batch || state.evaluating || !unevaluated.length ? "disabled" : ""}>${currentBatch ? `<span class="spinner"></span> ` : ""}${batchLabel}</button></div>` : `<div class="empty-card"><strong>No evaluation group attached</strong><p class="subtle">Create a reusable group or attach one from the group library.</p><button class="primary" id="workspace-new-group">Create group</button>${allGroups.length ? `<select id="attach-select" style="margin-top:10px"><option value="">Attach existing…</option>${allGroups.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>`}
     ${result ? `<div class="grid">
       <article class="chart-card"><div class="card-head"><div><h2>Progress from original</h2><p>Document score (solid) · best so far (dotted) · run range (I)</p></div><span class="metric-note">${escapeHtml(result.question?.text || "Overall")} · percentage points</span></div>${chartSvg(result.timeline)}</article>
       <article class="chart-card"><div class="card-head"><div><h2>Current leader</h2><p>${result.mode === "max" ? `${lowerSelected ? "Lowest" : "Highest"} score ever` : "Median across runs"}</p></div>${best ? `<span class="badge best">Best</span>` : ""}</div>${best ? `<h3 style="font-size:22px;margin:24px 0 4px"><span class="version-tag">${versionLabel(best)}</span>${escapeHtml(best.title)}</h3><div class="stats"><div class="stat"><strong>${score(best.rankScore)}</strong><span>rank score</span></div><div class="stat"><strong>${best.runs}</strong><span>runs</span></div><div class="stat"><strong>${best.runs > 1 ? score(best.spread) : "—"}</strong><span>spread</span></div></div>` : `<div class="chart-empty">No scores yet.</div>`}</article>
@@ -343,18 +346,64 @@ function renderWorkspace() {
   $("#metric-select")?.addEventListener("change", (event) => openWorkspace(workspace.id, { question: event.target.value }));
   $$("[data-mode]").forEach((button) => button.onclick = async () => { await api(`/api/workspaces/${workspace.id}`, { method: "PATCH", body: JSON.stringify({ rankingMode: button.dataset.mode }) }); openWorkspace(workspace.id, { mode: button.dataset.mode }); });
   $("#attach-select")?.addEventListener("change", async (event) => { if (!event.target.value) return; await api(`/api/workspaces/${workspace.id}/groups`, { method: "POST", body: JSON.stringify({ group: event.target.value }) }); await api(`/api/workspaces/${workspace.id}`, { method: "PATCH", body: JSON.stringify({ primaryGroup: event.target.value }) }); state.question = ""; openWorkspace(workspace.id, { group: event.target.value }); });
+  $("#evaluate-all")?.addEventListener("click", (event) => evaluateAllUnevaluated(workspace.id, active.id, unevaluated, event.currentTarget));
   $$('[data-view]').forEach((button) => button.onclick = () => viewDocument(workspace.id, button.dataset.view));
   $$('[data-compare]').forEach((button) => button.onclick = () => toggleCompare(button.dataset.compare));
   $$('[data-evaluate]').forEach((button) => button.onclick = () => evaluate(workspace.id, button.dataset.evaluate, button));
+  if (state.batch || state.evaluating) $$('[data-evaluate]').forEach((button) => { button.disabled = true; });
   $$('[data-table-view]').forEach((button) => button.onclick = () => { state.tableView = button.dataset.tableView; renderWorkspace(); });
   renderCompareTray();
 }
 
 async function evaluate(workspaceId, documentId, button) {
+  if (state.batch || state.evaluating) { toast("An evaluation is already running", true); return; }
+  const groupId = state.group;
+  state.evaluating = { workspaceId, groupId, documentId };
+  $$('[data-evaluate]').forEach((control) => { control.disabled = true; });
+  const batchButton = $("#evaluate-all");
+  if (batchButton) { batchButton.disabled = true; batchButton.textContent = "Evaluation in progress"; }
   const old = button.innerHTML; button.disabled = true; button.innerHTML = `<span class="spinner"></span>`;
-  try { const run = await api(`/api/workspaces/${workspaceId}/documents/${documentId}/evaluate`, { method: "POST", body: JSON.stringify({ group: state.group }) }); toast(run.status === "success" ? "Evaluation complete" : "Question scores saved; the overall scorer failed", run.status !== "success"); await openWorkspace(workspaceId); }
-  catch (error) { toast(error.message, true); await openWorkspace(workspaceId); }
-  finally { button.disabled = false; button.innerHTML = old; }
+  let message = "Evaluation complete";
+  let failed = false;
+  try {
+    const run = await api(`/api/workspaces/${workspaceId}/documents/${documentId}/evaluate`, { method: "POST", body: JSON.stringify({ group: groupId }) });
+    if (run.status !== "success") { message = `Question scores saved; overall scorer failed: ${run.aggregationError}`; failed = true; }
+  } catch (error) { message = error.message; failed = true; }
+  state.evaluating = null;
+  const stillViewingEvaluation = state.workspace?.workspace.id === workspaceId && state.group === groupId;
+  if (stillViewingEvaluation) await openWorkspace(workspaceId, { group: groupId });
+  else if (state.workspace) renderWorkspace();
+  toast(message, failed);
+  if (button.isConnected) { button.disabled = false; button.innerHTML = old; }
+}
+
+async function evaluateAllUnevaluated(workspaceId, groupId, documents, button) {
+  if (!documents.length || state.batch || state.evaluating) return;
+  state.batch = { workspaceId, groupId, current: 1, total: documents.length };
+  button.disabled = true;
+  $$('[data-evaluate]').forEach((control) => { control.disabled = true; });
+  let completed = 0;
+  const aggregationFailures = [];
+  const failures = [];
+  for (const [index, document] of documents.entries()) {
+    state.batch.current = index + 1;
+    if (button.isConnected) button.innerHTML = `<span class="spinner"></span> Evaluating ${index + 1}/${documents.length}`;
+    try {
+      const run = await api(`/api/workspaces/${workspaceId}/documents/${document.id}/evaluate`, { method: "POST", body: JSON.stringify({ group: groupId }) });
+      if (run.status === "success") completed += 1;
+      else aggregationFailures.push({ document, error: run.aggregationError || "Overall scorer failed" });
+    } catch (error) {
+      failures.push({ document, error: error.message });
+    }
+  }
+  state.batch = null;
+  const stillViewingBatch = state.workspace?.workspace.id === workspaceId && state.group === groupId;
+  if (stillViewingBatch) await openWorkspace(workspaceId, { group: groupId });
+  else if (state.workspace) renderWorkspace();
+  const summary = [`${completed} scored`];
+  if (aggregationFailures.length) summary.push(`${aggregationFailures.length} overall formula failed (${versionTitle(aggregationFailures[0].document)}: ${aggregationFailures[0].error})`);
+  if (failures.length) summary.push(`${failures.length} Jev failed (${versionTitle(failures[0].document)}: ${failures[0].error})`);
+  toast(summary.join(" · "), aggregationFailures.length > 0 || failures.length > 0);
 }
 
 function openUpload(documents) {

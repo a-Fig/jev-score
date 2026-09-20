@@ -304,10 +304,11 @@ export function scoreMatrix(db, workspaceRef, { group: groupRef = null, mode = n
   const rankingMode = mode || workspace.rankingMode;
   if (!["max", "median"].includes(rankingMode)) throw new Error("Ranking mode must be max or median.");
   const documents = listDocuments(db, workspace.id);
-  const values = new Map(documents.map((document) => [document.id, { overall: [], questions: new Map(), runs: 0 }]));
-  db.prepare(`SELECT document_id, overall_score FROM evaluation_runs WHERE workspace_id=? AND group_id=?`).all(workspace.id, group.id).forEach((run) => {
+  const values = new Map(documents.map((document) => [document.id, { overall: [], questions: new Map(), runs: 0, completedRuns: 0 }]));
+  db.prepare(`SELECT document_id, status, overall_score FROM evaluation_runs WHERE workspace_id=? AND group_id=?`).all(workspace.id, group.id).forEach((run) => {
     const entry = values.get(run.document_id);
     entry.runs += 1;
+    if (run.status !== "jev_error") entry.completedRuns += 1;
     if (Number.isFinite(run.overall_score)) entry.overall.push(Number(run.overall_score));
   });
   db.prepare(`SELECT r.document_id,q.question_key,s.normalized_score FROM evaluation_scores s JOIN evaluation_runs r ON r.id=s.run_id JOIN evaluation_questions q ON q.id=s.question_id WHERE r.workspace_id=? AND r.group_id=?`).all(workspace.id, group.id).forEach((row) => {
@@ -321,6 +322,8 @@ export function scoreMatrix(db, workspaceRef, { group: groupRef = null, mode = n
     return {
       ...document,
       runs: entry.runs,
+      completedRuns: entry.completedRuns,
+      evaluated: entry.completedRuns > 0,
       overallScore: pick(entry.overall),
       scores: Object.fromEntries(group.questions.map((question) => [question.key, pick(entry.questions.get(question.key) || [], question.direction)])),
     };
