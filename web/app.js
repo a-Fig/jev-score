@@ -157,9 +157,34 @@ function collapseDiffContext(rows, context = 3) {
   return compact;
 }
 
-function renderDiffCell(content, number, type) {
+function inlineDiff(leftText, rightText) {
+  const tokenize = (value) => String(value).match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) || [];
+  const left = tokenize(leftText), right = tokenize(rightText);
+  if (left.length * right.length > 20_000) return [`<mark>${escapeHtml(leftText)}</mark>`, `<mark>${escapeHtml(rightText)}</mark>`];
+  const lengths = Array.from({ length: left.length + 1 }, () => new Uint16Array(right.length + 1));
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) lengths[i][j] = left[i] === right[j] ? lengths[i + 1][j + 1] + 1 : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+  }
+  const leftHtml = [], rightHtml = [];
+  let i = 0, j = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) { const token = escapeHtml(left[i]); leftHtml.push(token); rightHtml.push(token); i += 1; j += 1; }
+    else if (lengths[i + 1][j] >= lengths[i][j + 1]) { leftHtml.push(`<mark>${escapeHtml(left[i])}</mark>`); i += 1; }
+    else { rightHtml.push(`<mark>${escapeHtml(right[j])}</mark>`); j += 1; }
+  }
+  while (i < left.length) leftHtml.push(`<mark>${escapeHtml(left[i++])}</mark>`);
+  while (j < right.length) rightHtml.push(`<mark>${escapeHtml(right[j++])}</mark>`);
+  return [leftHtml.join(""), rightHtml.join("")];
+}
+
+function renderDiffCell(content, number, type, highlighted = null) {
   const marker = type === "removed" ? "−" : type === "added" ? "+" : "";
-  return `<div class="diff-cell ${type}"><span class="diff-number">${number ?? ""}</span><span class="diff-marker">${marker}</span><code>${content == null ? "" : escapeHtml(content) || " "}</code></div>`;
+  return `<div class="diff-cell ${type}"><span class="diff-number">${number ?? ""}</span><span class="diff-marker">${marker}</span><code>${content == null ? "" : highlighted ?? (escapeHtml(content) || " ")}</code></div>`;
+}
+
+function renderDiffRow(row) {
+  const highlighted = row.leftType === "removed" && row.rightType === "added" ? inlineDiff(row.left, row.right) : [null, null];
+  return `<div class="diff-row">${renderDiffCell(row.left, row.leftNumber, row.leftType, highlighted[0])}${renderDiffCell(row.right, row.rightNumber, row.rightType, highlighted[1])}</div>`;
 }
 
 function comparisonDocuments(left, right, workspaceId, mode) {
@@ -170,7 +195,7 @@ function comparisonDocuments(left, right, workspaceId, mode) {
     const removals = rows.filter((row) => row.leftType === "removed").length;
     const additions = rows.filter((row) => row.rightType === "added").length;
     const diffHeader = (document, role, count, kind) => `<header><div><span class="diff-role">${role}</span><strong>${escapeHtml(versionTitle(document))}</strong></div><div class="diff-header-actions"><span class="diff-count ${kind}">${kind === "removed" ? "−" : "+"}${count}</span><a href="/api/workspaces/${workspaceId}/documents/${document.id}?download">Download</a></div></header>`;
-    return `<div class="diff-view"><div class="diff-headings"><div>${diffHeader(left, "Original", removals, "removed")}</div><div>${diffHeader(right, "Changed", additions, "added")}</div></div><div class="diff-rows">${visibleRows.map((row) => row.collapsed ? `<div class="diff-collapse"><button data-expand-diff>⋯ ${row.collapsed} unchanged lines</button></div>` : `<div class="diff-row">${renderDiffCell(row.left, row.leftNumber, row.leftType)}${renderDiffCell(row.right, row.rightNumber, row.rightType)}</div>`).join("")}</div></div>`;
+    return `<div class="diff-view"><div class="diff-headings"><div>${diffHeader(left, "Original", removals, "removed")}</div><div>${diffHeader(right, "Changed", additions, "added")}</div></div><div class="diff-rows">${visibleRows.map((row) => row.collapsed ? `<div class="diff-collapse"><button data-expand-diff>⋯ ${row.collapsed} unchanged lines</button></div>` : renderDiffRow(row)).join("")}</div></div>`;
   }
   return `<div class="compare-documents"><article>${header(left)}<div class="markdown-body">${markdownToHtml(left.content)}</div></article><article>${header(right)}<div class="markdown-body">${markdownToHtml(right.content)}</div></article></div>`;
 }
@@ -357,10 +382,10 @@ async function openComparison() {
     renderCompareTray();
     const [left, right] = await Promise.all(state.compare.map((id) => api(`/api/workspaces/${workspace.id}/documents/${id}`)));
     const options = (selectedId) => state.workspace.documents.map((document) => `<option value="${document.id}" ${document.id === selectedId ? "selected" : ""}>${escapeHtml(versionTitle(document))}</option>`).join("");
-    $("#comparison").innerHTML = `<div class="comparison-shell">
+    $("#comparison").innerHTML = `<div class="comparison-shell ${state.comparisonView === "diff" ? "diff-mode" : ""}">
       <div class="comparison-top"><div><p class="eyebrow">Document comparison</p><h2>Compare drafts</h2><p class="subtle">${escapeHtml(state.workspace.matrix?.group.name || "Scores unavailable")} · ${state.mode === "median" ? "median" : "highest"} scores</p></div><button class="icon" id="close-comparison" aria-label="Close">×</button></div>
       <div class="compare-pickers"><label>Original document<select data-compare-picker="0">${options(left.id)}</select></label><label>Changed document<select data-compare-picker="1">${options(right.id)}</select></label></div>
-      <section class="comparison-section"><div class="comparison-section-title"><h3>Scores</h3></div>${comparisonScoreRows(left.id, right.id)}</section>
+      <details class="comparison-scores" ${state.comparisonView === "rendered" ? "open" : ""}><summary><span>Scores</span><span class="subtle">${state.comparisonView === "diff" ? "Show score comparison" : "Hide score comparison"}</span></summary>${comparisonScoreRows(left.id, right.id)}</details>
       <section class="comparison-section"><div class="comparison-section-title"><h3>Documents</h3><div class="segmented compare-view-toggle"><button data-comparison-view="rendered" class="${state.comparisonView === "rendered" ? "active" : ""}">Rendered</button><button data-comparison-view="diff" class="${state.comparisonView === "diff" ? "active" : ""}">Diff</button></div></div><div id="comparison-documents">${comparisonDocuments(left, right, workspace.id, state.comparisonView)}</div></section>
     </div>`;
     $("#close-comparison").onclick = () => { state.diffExpanded = false; $("#compare-dialog").close(); };
@@ -371,6 +396,7 @@ async function openComparison() {
       if (state.compare[1 - index] === select.value) { toast("Choose two different documents"); select.value = state.compare[index]; return; }
       state.compare[index] = select.value; state.diffExpanded = false; openComparison(); renderWorkspace();
     });
+    $("#compare-dialog").classList.toggle("diff-mode", state.comparisonView === "diff");
     if (!$("#compare-dialog").open) $("#compare-dialog").showModal();
   } catch (error) { toast(error.message, true); }
 }
