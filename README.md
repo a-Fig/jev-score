@@ -13,7 +13,7 @@ Jev Score is a local command line tool and web app that scores drafts of a docum
 
 Typical pairings are a resume and a job posting, a college essay and its prompt, or a cold email and the reader's background. [TypeSafe's Jev model](https://www.typesafe.ai/) is used deterministic scoring. Every draft and every score is stored in a local SQLite database and shown in the web UI.
 
-![Jev Score workspace: progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
+![Jev Score workspace: progress chart, current leader, and per-question scores for 38 resume drafts](./docs/assets/workspace.jpg)
 
 **Jump to:** [Install](#install) · [First score](#your-first-score) · [Concepts](#concepts) · [Agent loop](#the-agent-loop) · [Limits](#honest-limits)
 
