@@ -5,7 +5,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.13-339933)](https://nodejs.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-TLDR: Jev-Score enables Claude to optimize writing in a loop against a deterministic evaluator paired with natural language writing objectives.
+TLDR: Jev-Score enables Claude to optimize writing in a loop against a deterministic evaluator ([TypeSafe's Jev model](https://www.typesafe.ai/)) paired with natural language writing objectives.
 
 ## What Jev Score does
 
