@@ -5,9 +5,19 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.13-339933)](https://nodejs.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-## Give your coding agent a scoreboard
+## Write the tests for your writing
 
-Give Claude three files: your resume, the job posting, and an evaluation group you wrote. The group is a plain-text list of the questions you want every draft to answer:
+Jev Score turns questions you write into an optimization loop for Claude. Claude revises the document, Jev scores every question, and the weakest results become the next edit brief. The loop ends when the writing stops improving.
+
+```text
+your questions -> Claude revises -> Jev scores the draft
+                       ^                       |
+                       +---- weak scores ------+
+```
+
+### A resume loop in 20 seconds
+
+Give Claude a resume, the job posting, and an evaluation group you wrote:
 
 ```text
 This resume is a strong fit for the job
@@ -18,25 +28,35 @@ This resume is clean and easy to scan
 This resume is at the right seniority level for the role
 ```
 
-Claude rewrites the resume. Jev scores it against the job posting and those questions. Claude uses the weak scores as its next edit brief, then repeats.
+`[lower]` marks something to minimize. The rest should score as high as possible.
+
+Jev scores the original resume question by question. Claude targets the failures and submits another draft against the same group:
 
 ```text
-agent> Rewrote the resume.
-you>   Better?
-jev>   Evidence 76.0 -> 99.3. Authenticity 77.8 -> 96.3.
+original resume       83.2
+        |              |
+        +-- revise ----+
+                       v
+targeted revision     96.6  three-run median
 ```
 
-**Jev Score is a test suite for writing.** Your coding agent handles the edits; [TypeSafe's Jev model](https://www.typesafe.ai/) evaluates through OpenRouter; a local SQLite database keeps every draft and run.
+The score gives Claude a stable target and shows whether each rewrite improved the resume.
 
-The same loop works for an essay against its prompt, a spec against requirements, or a landing page against its positioning.
+The loop adds three things to a prompt like “make my resume better”:
+
+- **Your target.** The agent works toward the exact questions you chose.
+- **A separate evaluator.** Claude writes; [TypeSafe's Jev model](https://www.typesafe.ai/) scores through OpenRouter.
+- **Every attempt stays visible.** Local SQLite history preserves improvements, regressions, and repeated runs.
+
+The same loop can improve an essay against its assignment, a product spec against its requirements, or a landing page against its positioning brief.
+
+## See the full history
+
+The browser workspace shows the full path: drafts, repeated evaluations, per-question movement, the current leader, and the revisions that made things worse. Agents receive the same data as JSON.
 
 ![Jev Score workspace showing a progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
 
-**Jump to:** [Install](#install) · [First score](#your-first-score) · [Concepts](#the-five-parts) · [Agent loop](#the-agent-loop) · [Limits](#data-privacy-and-limits)
-
-## This README is one of the test subjects
-
-The screenshot is a real Jev Score workspace containing three revisions of this README and fourteen evaluations. The "Open-source README quality" group asked whether each draft was engaging, clear within ten seconds, easy to use, and honest about its limits.
+This README is one of Jev Score's test subjects. Its evaluation group asks whether each draft is engaging, clear within ten seconds, easy to use, and honest about its limits.
 
 | Draft | Overall | Engaging? | Clear in 10s? |
 | --- | ---: | ---: | ---: |
@@ -44,7 +64,9 @@ The screenshot is a real Jev Score workspace containing three revisions of this 
 | Benefit-led rewrite | 92.1 | 82.0 | 93.3 |
 | Visual quick start | 92.7 | 81.3 | 93.8 |
 
-One rewrite scored worse and remains in the chart. Regressions belong in the history too.
+One rewrite scored worse and remains in the history. Regressions count too.
+
+**Jump to:** [Install](#install) · [First score](#your-first-score) · [Concepts](#the-five-parts) · [Agent loop](#the-agent-loop) · [Limits](#data-privacy-and-limits)
 
 ## Install
 
@@ -147,7 +169,7 @@ jev-score rank "Product writer" \
   --question does-the-resume-feel-authentic
 ```
 
-On the bundled example, three runs of the targeted revision produced a 96.6 median, a 0.2-point spread, and a 13.2-point gain over the original. Evidence moved from 76 to 99.3; authenticity moved from 77.8 to 96.3.
+On the bundled example, three runs of the targeted revision produced a 96.6 median with a 0.2-point spread. Evidence moved from 76 to 99.3; authenticity moved from 77.8 to 96.3.
 
 Jev is probabilistic. `max` mode ranks each document by its best observed run. `median` favors repeatable results:
 
