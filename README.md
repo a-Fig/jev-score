@@ -7,29 +7,33 @@
 
 ## Give your coding agent a scoreboard
 
-Most AI writing loops run on vibes: draft, rewrite, hope. **Jev Score is a test suite for writing.** It scores every revision against the context the document must satisfy and the questions that define "good", and keeps the history so you can see whether draft 8 actually beats draft 3.
+Your agent can produce ten plausible rewrites before lunch. Jev Score keeps them honest.
 
-It is a local CLI and web app for developers who already let Codex or Claude Code edit their text: a resume against a job posting, an essay against its prompt, a spec against requirements, a landing page against its positioning. [TypeSafe's Jev model](https://www.typesafe.ai/) does the scoring through OpenRouter; drafts and scores stay in local SQLite.
+```text
+agent> Rewrote the resume.
+you>   Better?
+jev>   Evidence 76.0 -> 99.3. Authenticity 77.8 -> 96.3.
+```
 
-- **Numbers per question, not vibes.** On the bundled resume example, one agent revision aimed at the two weakest questions moved the median score from 83.2 to 96.6 ([the run](#the-agent-loop)).
-- **Every run is kept**, shown as medians and ranges, because Jev is probabilistic.
-- **CLI for your agent, UI for you.** Both read one database: JSON out of the CLI; in the browser, a progress chart and side-by-side or diff comparison of any two drafts.
+**Jev Score is a test suite for writing.** Give it a document, the context that document must satisfy, and the questions that define "good." Your coding agent handles the edits; [TypeSafe's Jev model](https://www.typesafe.ai/) evaluates through OpenRouter; a local SQLite database keeps every draft and run.
 
-![Jev Score workspace: progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
+Use it for a resume against a job posting, an essay against its prompt, a spec against requirements, or a landing page against its positioning.
 
-**Jump to:** [Install](#install) · [First score](#your-first-score) · [Concepts](#concepts) · [Agent loop](#the-agent-loop) · [Limits](#honest-limits)
+![Jev Score workspace showing a progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
 
-## Evidence: this project's own README
+**Jump to:** [Install](#install) · [First score](#your-first-score) · [Concepts](#the-five-parts) · [Agent loop](#the-agent-loop) · [Limits](#data-privacy-and-limits)
 
-That screenshot is a real workspace holding this project's README: 3 drafts, 14 evaluations, scored by an "Open-source README quality" group. Documents panel in "highest" mode, question columns abbreviated:
+## This README is one of the test subjects
+
+The screenshot is a real Jev Score workspace containing three revisions of this README and fourteen evaluations. The "Open-source README quality" group asked whether each draft was engaging, clear within ten seconds, easy to use, and honest about its limits.
 
 | Draft | Overall | Engaging? | Clear in 10s? |
-| --- | --- | --- | --- |
+| --- | ---: | ---: | ---: |
 | [Original README](https://github.com/a-Fig/jev-score/blob/733cd5b6cdf2ed3125e39d434f4c1d570efb031d/README.md) | 85.5 | 75.5 | 90.3 |
-| Benefit-led README | 92.1 | 82.0 | 93.3 |
-| Visual quick-start README | 92.7 | 81.3 | 93.8 |
+| Benefit-led rewrite | 92.1 | 82.0 | 93.3 |
+| Visual quick start | 92.7 | 81.3 | 93.8 |
 
-The chart dips where a rewrite came out worse; those runs are kept too. The original README is linked in the table (pinned to its first commit) so you can read it next to this one.
+One rewrite scored worse and remains in the chart. Regressions belong in the history too.
 
 ## Install
 
@@ -38,40 +42,40 @@ You need Node.js 22.13 or newer and an OpenRouter API key with access to Jev. Th
 ```bash
 git clone https://github.com/a-Fig/jev-score.git
 cd jev-score
-npm install --global .          # puts `jev-score` on your PATH
+npm install --global .
 cp .env.example .env.local      # PowerShell: Copy-Item .env.example .env.local
 ```
 
-The global install links to this checkout, so keep the folder in place. Put your key in `.env.local`:
+The global install links to this checkout, so keep the folder in place. Add your key to `.env.local`:
 
 ```dotenv
 OPENROUTER_API_KEY=your_key_here
 OPENROUTER_JEV_MODEL=typesafe/jev-1.13
 ```
 
-`.env.local` is read only from the directory you run `jev-score` in. To run it from anywhere, set `OPENROUTER_API_KEY` in your shell instead. Then `jev-score ui` opens the app at `http://127.0.0.1:4317` (`--port <number>` to change it), and `jev-score --help` lists every command.
+`.env.local` is read from the directory where you run `jev-score`. Set `OPENROUTER_API_KEY` in your shell instead if you want to score from other directories.
 
 ## Your first score
 
-Three commands, run from the repo so the example paths resolve.
+Run these commands from the repository so the example paths resolve:
 
 ```bash
-# 1. The questions that define "good"
+# 1. Define what a good resume means
 jev-score group create --name "Resume review" \
   --questions ./examples/resume/questions.txt
 
-# 2. A workspace built around the job posting
+# 2. Create a workspace around the job posting
 jev-score workspace create --name "Product writer" \
   --context ./examples/resume/job-posting.md \
   --context-title "Job posting" \
   --group "Resume review"
 
-# 3. Save and score the example resume
+# 3. Store and score the resume
 jev-score score "Product writer" ./examples/resume/resume.md \
   --title "Original resume"
 ```
 
-The third command prints JSON. A real run (5 questions, 3 shown):
+The third command prints JSON. This is a real run, trimmed to three questions:
 
 ```json
 {
@@ -86,75 +90,100 @@ The third command prints JSON. A real run (5 questions, 3 shown):
 }
 ```
 
-Evidence and authenticity are the weak spots, so that is where the next draft goes.
+Evidence and authenticity are the next edit brief.
 
-## Concepts
+## The five parts
 
-| Term | Meaning |
-| --- | --- |
-| **Context** | The text a document must satisfy: a job posting, prompt, or requirements doc. One per workspace. |
-| **Workspace** | That context plus every revision of the document and all their scores. |
-| **Document** | One stored draft: `#0` is the first draft stored (the original), then `#1`, `#2`, and so on, each with an optional change summary and parent. |
-| **Evaluation group** | A reusable list of questions plus the scorer that folds them into one number: a mean by default, with lower-is-better questions counted as `100 - score`. Only its name can be edited later; to change the questions, make a new group. |
-| **Run** | One evaluation of one document under one group: 0-100 per question, plus the overall. Scoring a document again adds a run, not a document. |
-| **Ranking mode** | `max` (default) ranks each document by its best run; `median` ranks by its middle run and rewards stability. Switch with `jev-score workspace mode <workspace> median` or the UI toggle. |
+| Part | What it means | Resume example |
+| --- | --- | --- |
+| **Context** | The source the writing must satisfy | A job posting |
+| **Evaluation group** | Reusable questions that define quality | Fit, evidence, authenticity |
+| **Document** | One unique stored draft | Original or revised resume |
+| **Run** | One probabilistic evaluation | Per-question and overall scores |
+| **Workspace** | The context, drafts, groups, and run history | The full application effort |
+
+The first document in a workspace becomes version `#0`. Later drafts can record a title, change summary, and parent. Identical content is stored once, while each evaluation remains a separate run.
+
+Questions receive normalized scores from 0 to 100. Higher is better by default. Prefix a plain-text question with `[lower]` for the opposite direction:
+
+```text
+Does the document support important claims with specific evidence?
+Is it easy to scan without losing essential detail?
+[lower] Does it contain unsupported hype or vague superlatives?
+```
+
+A raw score of 8 on the last question contributes 92 to the default direction-aware mean. Questions and scorer code lock after a group's first run so historical results remain comparable. Create a new group when the rubric changes.
 
 ## The agent loop
 
-Your agent **creates** a draft, Jev Score **evaluates** it, and the agent **thinks** about which questions fell short before creating the next one.
-
-```mermaid
-flowchart LR
-    A[Create] --> B[Eval]
-    B --> C[Think]
-    C --> A
-```
-
-Everything your agent needs has a JSON-printing CLI command (the chart and diff views are UI-only), so one turn looks like this:
+Your agent stores one coherent revision, evaluates it, and uses the weakest questions as the next edit brief.
 
 ```bash
-# create: save a revision, with what changed and where it came from
 jev-score document add "Product writer" ./resume-v2.md \
   --title "Quantified outcomes" \
   --summary "Added measured outcomes and provenance" \
   --parent "Original resume"
 
-# eval: score it, more than once
-jev-score score "Product writer" "Quantified outcomes" --note "iteration 1"
-
-# think: rank the drafts overall, then by a single question
-# (keys are listed by `jev-score group show <group>`)
+jev-score score "Product writer" "Quantified outcomes" --note "run 1"
 jev-score rank "Product writer"
-jev-score rank "Product writer" --question does-the-resume-feel-authentic
 ```
 
-On the bundled example, with a revision aimed at those two weak questions (written by an agent, not shipped in the repo), `rank` printed (trimmed):
+Rank by one question when the aggregate hides the problem:
 
-```json
-{
-  "mode": "max",
-  "items": [
-    { "title": "Quantified outcomes", "runs": 3, "median": 96.6, "spread": 0.2, "rankScore": 96.7, "delta": 13.2 },
-    { "title": "Original resume", "runs": 3, "median": 83.2, "spread": 0.6, "rankScore": 83.5, "delta": 0 }
-  ]
-}
+```bash
+jev-score group show "Resume review"   # lists stable question keys
+jev-score rank "Product writer" \
+  --question does-the-resume-feel-authentic
 ```
 
-Evidence went 76 to 99.3 and authenticity 77.8 to 96.3; spreads of 0.6 and 0.2 put the 13.2-point `delta` well outside the noise. The repo ships an [agent skill](./.agents/skills/jev-score/SKILL.md) that teaches this loop to your agent.
+On the bundled example, three runs of the targeted revision produced a 96.6 median, a 0.2-point spread, and a 13.2-point gain over the original. Evidence moved from 76 to 99.3; authenticity moved from 77.8 to 96.3.
 
-## Honest limits
+Jev is probabilistic. `max` mode ranks each document by its best observed run. `median` favors repeatable results:
 
-- **Scores are noisy.** Jev is probabilistic. Score anything that matters more than once and read the spread; a one- or two-point gap is not a result.
-- **Your text leaves the machine to be scored.** The document, context, and questions go to OpenRouter. Nothing else from your workspace does.
-- **Single user, localhost only.** The server binds to `127.0.0.1`. No authentication, no hosted mode, and anyone with your OS account can read the database.
-- **Text and Markdown only.** Convert PDF or Word files first.
-- **Custom scorers are trusted local JavaScript.** They run in a worker with a timeout, not a sandbox.
-- **Independent project**, MIT licensed, not affiliated with TypeSafe or OpenRouter.
+```bash
+jev-score score "Product writer" "Quantified outcomes" --note "run 2"
+jev-score score "Product writer" "Quantified outcomes" --note "run 3"
+jev-score workspace mode "Product writer" median
+jev-score rank "Product writer"
+```
 
-`jev-score db path` prints the database location (`JEV_SCORE_DB` or `JEV_SCORE_DATA_DIR` moves it); `workspace delete --yes` and `db reset --yes` clean up. `jev-score usage` shows the Jev tokens and costs recorded locally.
+A one-point lead with a five-point spread is weak evidence.
 
-## Where next
+## One database, two views
 
-- [Custom scorers](./docs/custom-scorers.md): weight questions or apply your own formula with a JavaScript function (CLI only). Mark a question lower-is-better by prefixing its line with `[lower]` in a text question file; see `jev-score --help`.
-- [CONTRIBUTING.md](./CONTRIBUTING.md): run `npm test` and `npm run pack:check` before a pull request.
-- [SECURITY.md](./SECURITY.md): report vulnerabilities privately through GitHub security advisories.
+Every data command prints JSON for agents. The browser reads the same SQLite database and adds the chart, score matrix, rendered documents, and side-by-side or line-diff comparison.
+
+```bash
+jev-score ui                     # opens http://127.0.0.1:4317
+jev-score ui --port 4400         # choose another port
+jev-score serve                  # run without opening a browser
+```
+
+The repository also ships an [agent skill](./.agents/skills/jev-score/SKILL.md) that teaches the create, evaluate, inspect, and revise workflow.
+
+## Data, privacy, and limits
+
+- **Storage is local.** Workspaces, documents, questions, scores, and usage records live in SQLite. `jev-score db path` prints the location; `JEV_SCORE_DB` and `JEV_SCORE_DATA_DIR` can move it.
+- **Evaluation is remote.** The document, workspace context, and questions go to OpenRouter when you score. Keep secrets out of all three.
+- **The app is single-user.** It binds to `127.0.0.1`, has no authentication or hosted mode, and is readable by anyone with access to your OS account.
+- **Input is text or Markdown.** Convert PDF and Word files first.
+- **Custom scorers are trusted code.** They run in a short-lived worker with a timeout, not a security sandbox. See [custom scorers](./docs/custom-scorers.md).
+- **Deletion is permanent.** `workspace delete --yes`, `group delete --yes`, and `db reset --yes` remove the selected data.
+- **The project is independent.** Jev Score is not affiliated with TypeSafe or OpenRouter.
+
+## Reference
+
+```text
+jev-score workspace create|list|show|delete|primary|mode
+jev-score group create|list|show|rename|delete|attach
+jev-score document add|list|get
+jev-score score <workspace> <document-or-file>
+jev-score rank <workspace>
+jev-score usage
+jev-score ui | serve
+jev-score db path|reset
+```
+
+Run `jev-score --help` for every option. Names and IDs both work as references.
+
+For development, run `npm test` and `npm run pack:check`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow and [SECURITY.md](./SECURITY.md) for private vulnerability reporting. Jev Score is available under the [MIT License](./LICENSE).
