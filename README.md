@@ -7,21 +7,17 @@
 
 ## Jev Score - Unit tests for writing
 
-Jev Score turns you write into an optimization loop for Claude.
+Jev-Score enables Claude to optimize writing against a deterministic evaluator paired with natural language writing objectives.
 
-Jev-score scores every revision against the context the document must satisfy and the questions that define "good", and keeps the history so you can see whether draft 8 actually beats draft 3.
+Jev-score scores documents against the context they must satisfy and the subjective questions that define "good".
 
-It is a local CLI and web app for developers who already let Codex or Claude Code edit their text: a resume against a job posting, an essay against its prompt, a spec against requirements, a landing page against its positioning. [TypeSafe's Jev model](https://www.typesafe.ai/) does the scoring through OpenRouter; drafts and scores stay in local SQLite.
-
-- **Numbers per question, not vibes.** On the bundled resume example, one agent revision aimed at the two weakest questions moved the median score from 83.2 to 96.6 ([the run](#the-agent-loop)).
-- **Every run is kept**, shown as medians and ranges, because Jev is probabilistic.
-- **CLI for your agent, UI for you.** Both read one database: JSON out of the CLI; in the browser, a progress chart and side-by-side or diff comparison of any two drafts.
+It is a local CLI + web app tool to enhance the writing of coding agents. Think resume against a job posting, an essay against its prompt, a spec against requirements, a landing page against its positioning. [TypeSafe's Jev model](https://www.typesafe.ai/) does the scoring through OpenRouter; drafts and scores stay in local SQLite.
 
 ![Jev Score workspace: progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
 
 **Jump to:** [Install](#install) · [First score](#your-first-score) · [Concepts](#concepts) · [Agent loop](#the-agent-loop) · [Limits](#honest-limits)
 
-### A resume loop in 20 seconds
+### Practical example
 
 Give Claude a resume, the job posting, and an evaluation group you wrote:
 
@@ -29,21 +25,21 @@ Give Claude a resume, the job posting, and an evaluation group you wrote:
 This resume is a strong fit for the job
 This resume would land an interview
 This resume would pass an ATS scan
-This resume is clean and easy to scan
+This resume is well organized 
 This resume has obvious red flags
 This resume is at the right seniority level for the role
 ```
 
-Jev scores the original resume question by question. Claude targets the failures and submits another draft against the same group:
+Jev looks at the job posting & resume, and assigns each question in the evaluation group a score between 0-100 based on how much Jev agrees with the statement. Claude then reviews the scores, and creates a new document with the goal of getting a better score. 
 
 ```text
 original resume       83.2
 revised resume        96.6 
 ```
 
-The score gives Claude a stable target and shows whether each rewrite improved the resume.
+The score gives Claude a stable target and shows whether and how each rewrite improved the resume.
 
-- **Your target.** The agent works toward the exact questions you chose.
+- **Your target.** The agent optimizes for the exact objectives you chose.
 - **A separate evaluator.** Claude writes; [TypeSafe's Jev model](https://www.typesafe.ai/) scores through OpenRouter.
 - **Every attempt stays visible.** Local SQLite history preserves improvements, regressions, and repeated runs.
 
@@ -56,8 +52,7 @@ That screenshot is a real workspace holding this project's README: 3 drafts, 14 
 | Draft | Overall | Engaging? | Clear in 10s? |
 | --- | --- | --- | --- |
 | [Original README](https://github.com/a-Fig/jev-score/blob/733cd5b6cdf2ed3125e39d434f4c1d570efb031d/README.md) | 85.5 | 75.5 | 90.3 |
-| Benefit-led README | 92.1 | 82.0 | 93.3 |
-| Visual quick-start README | 92.7 | 81.3 | 93.8 |
+| This README | 92.1 | 82.0 | 93.3 |
 
 The chart dips where a rewrite came out worse; those runs are kept too. The original README is linked in the table (pinned to its first commit) so you can read it next to this one.
 
