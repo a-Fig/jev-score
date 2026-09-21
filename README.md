@@ -11,7 +11,7 @@ Jev-Score enables Claude to optimize writing against a deterministic evaluator p
 
 Jev-score scores documents against the context they must satisfy and the subjective questions that define "good".
 
-It is a local CLI + web app tool to enhance the writing of coding agents. Think resume against a job posting, college essay against the prompt and background, or a cold email against receiver's background and desired outcomes. [TypeSafe's Jev model](https://www.typesafe.ai/) does the scoring through OpenRouter, and agent writes drafts, scores + drafts are stored in a local SQLite and visible through the web UI.
+It is a local CLI + web app tool to enhance the writing of coding agents. Think resume against a job posting, college essay against the prompt and background, or a cold email against desired outcomes and the reader's background. [TypeSafe's Jev model](https://www.typesafe.ai/) does the scoring through OpenRouter, and agent writes drafts, scores + drafts are stored in a local SQLite and visible through the web UI.
 
 ![Jev Score workspace: progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
 
