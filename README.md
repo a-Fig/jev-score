@@ -7,9 +7,9 @@
 
 ## What Jev Score does
 
-Jev Score is a local command line tool and web app that scores drafts of a document against a context and a list of questions. It is meant for developers who let Codex or Claude Code edit their text. The agent writes a draft, Jev Score returns a number for each question, and the agent uses those numbers to write the next draft.
+Jev Score is a local command line tool and web app that scores drafts of a document against some context and a list of questions. It is meant for developers who let Codex or Claude Code edit their writing. The agent writes a draft, Jev Score returns a number for each question, and the agent uses those numbers to write the next draft.
 
-Typical pairings are a resume and a job posting, a college essay and its prompt, or a cold email and the reader's background. [TypeSafe's Jev model](https://www.typesafe.ai/) does the scoring through OpenRouter. Every draft and every score is stored in a local SQLite database and shown in the web UI.
+Typical pairings are a resume and a job posting, a college essay and its prompt, or a cold email and the reader's background. [TypeSafe's Jev model](https://www.typesafe.ai/) is used deterministic scoring. Every draft and every score is stored in a local SQLite database and shown in the web UI.
 
 ![Jev Score workspace: progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
 
