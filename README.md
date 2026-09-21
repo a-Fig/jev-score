@@ -10,11 +10,12 @@
 Give Claude three files: your resume, the job posting, and an evaluation group you wrote. The group is a plain-text list of the questions you want every draft to answer:
 
 ```text
-Is the resume organized and easy to scan?
-Does the resume demonstrate strong fit for the role?
-Does the resume use specific, credible evidence?
-Does the resume feel authentic?
-Would this candidate likely receive an interview?
+This resume is a strong fit for the job
+This resume would land an interview
+This resume would pass an ATS scan
+This resume is clean and easy to scan
+[lower] This resume has obvious red flags
+This resume is at the right seniority level for the role
 ```
 
 Claude rewrites the resume. Jev scores it against the job posting and those questions. Claude uses the weak scores as its next edit brief, then repeats.
