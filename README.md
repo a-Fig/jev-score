@@ -25,11 +25,11 @@ That screenshot is a real workspace holding this project's README: 3 drafts, 14 
 
 | Draft | Overall | Engaging? | Clear in 10s? |
 | --- | --- | --- | --- |
-| Original README | 85.5 | 75.5 | 90.3 |
+| [Original README](https://github.com/a-Fig/jev-score/blob/733cd5b6cdf2ed3125e39d434f4c1d570efb031d/README.md) | 85.5 | 75.5 | 90.3 |
 | Benefit-led README | 92.1 | 82.0 | 93.3 |
 | Visual quick-start README | 92.7 | 81.3 | 93.8 |
 
-The chart dips where a rewrite came out worse; those runs are kept too.
+The chart dips where a rewrite came out worse; those runs are kept too. The original README is linked in the table (pinned to its first commit) so you can read it next to this one.
 
 ## Install
 
