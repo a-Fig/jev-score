@@ -5,9 +5,11 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.13-339933)](https://nodejs.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-## Give your coding agent a scoreboard
+## Jev Score - Unit tests for writing
 
-Most AI writing loops run on vibes: draft, rewrite, hope. **Jev Score is a test suite for writing.** It scores every revision against the context the document must satisfy and the questions that define "good", and keeps the history so you can see whether draft 8 actually beats draft 3.
+Jev Score turns you write into an optimization loop for Claude.
+
+Jev-score scores every revision against the context the document must satisfy and the questions that define "good", and keeps the history so you can see whether draft 8 actually beats draft 3.
 
 It is a local CLI and web app for developers who already let Codex or Claude Code edit their text: a resume against a job posting, an essay against its prompt, a spec against requirements, a landing page against its positioning. [TypeSafe's Jev model](https://www.typesafe.ai/) does the scoring through OpenRouter; drafts and scores stay in local SQLite.
 
@@ -18,6 +20,34 @@ It is a local CLI and web app for developers who already let Codex or Claude Cod
 ![Jev Score workspace: progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
 
 **Jump to:** [Install](#install) · [First score](#your-first-score) · [Concepts](#concepts) · [Agent loop](#the-agent-loop) · [Limits](#honest-limits)
+
+### A resume loop in 20 seconds
+
+Give Claude a resume, the job posting, and an evaluation group you wrote:
+
+```text
+This resume is a strong fit for the job
+This resume would land an interview
+This resume would pass an ATS scan
+This resume is clean and easy to scan
+This resume has obvious red flags
+This resume is at the right seniority level for the role
+```
+
+Jev scores the original resume question by question. Claude targets the failures and submits another draft against the same group:
+
+```text
+original resume       83.2
+revised resume        96.6 
+```
+
+The score gives Claude a stable target and shows whether each rewrite improved the resume.
+
+- **Your target.** The agent works toward the exact questions you chose.
+- **A separate evaluator.** Claude writes; [TypeSafe's Jev model](https://www.typesafe.ai/) scores through OpenRouter.
+- **Every attempt stays visible.** Local SQLite history preserves improvements, regressions, and repeated runs.
+
+The same loop can improve an essay against its assignment, a product spec against its requirements, or a landing page against its positioning brief.
 
 ## Evidence: this project's own README
 
