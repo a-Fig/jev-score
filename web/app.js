@@ -234,23 +234,53 @@ function renderEmpty() {
 function chartSvg(points) {
   if (!points.length || points.every((point) => point.delta == null)) return `<div class="chart-empty">Run a few evaluations to see progress.</div>`;
   const usable = points.filter((point) => point.delta != null);
-  const width = 700, height = 210, side = 28, top = 16, bottom = 34;
-  let min = Math.min(0, ...usable.flatMap((point) => [point.delta, point.frontier, point.minDelta ?? point.delta]));
-  let max = Math.max(0, ...usable.flatMap((point) => [point.delta, point.frontier, point.maxDelta ?? point.delta]));
-  if (min === max) { min -= 1; max += 1; }
+  const width = 760, height = 280, left = 58, right = 18, top = 18, bottom = 38;
+  let observedMin = Math.min(0, ...usable.flatMap((point) => [point.delta, point.frontier, point.minDelta ?? point.delta]));
+  let observedMax = Math.max(0, ...usable.flatMap((point) => [point.delta, point.frontier, point.maxDelta ?? point.delta]));
+  if (observedMin === observedMax) { observedMin -= 1; observedMax += 1; }
+  const padding = (observedMax - observedMin) * .08;
+  const paddedMin = observedMin < 0 ? observedMin - padding : 0;
+  const paddedMax = observedMax > 0 ? observedMax + padding : 0;
+  const rawStep = (paddedMax - paddedMin) / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep || 1));
+  const normalized = rawStep / magnitude;
+  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+  const min = Math.floor(paddedMin / step) * step;
+  const max = Math.ceil(paddedMax / step) * step;
+  const tickPrecision = Math.max(0, Math.ceil(-Math.log10(step)));
+  const ticks = [];
+  for (let value = min; value <= max + step / 2; value += step) ticks.push(Number(value.toFixed(8)));
   const versions = usable.map((point) => point.documentVersion);
   const firstVersion = Math.min(...versions), lastVersion = Math.max(...versions);
-  const x = (version) => side + (firstVersion === lastVersion ? (width - side * 2) / 2 : ((version - firstVersion) / (lastVersion - firstVersion)) * (width - side * 2));
+  const x = (version) => left + (firstVersion === lastVersion ? (width - left - right) / 2 : ((version - firstVersion) / (lastVersion - firstVersion)) * (width - left - right));
   const y = (value) => height - bottom - ((value - min) / (max - min)) * (height - top - bottom);
   const line = (key) => usable.map((point, index) => `${index ? "L" : "M"}${x(point.documentVersion)},${y(point[key])}`).join(" ");
   const signed = (value) => `${value > 0 ? "+" : ""}${score(value)}`;
+  const grid = ticks.map((tick) => `<g class="chart-tick ${tick === 0 ? "zero" : ""}"><line x1="${left}" x2="${width - right}" y1="${y(tick)}" y2="${y(tick)}"/><text x="${left - 9}" y="${y(tick) + 4}">${tick > 0 ? "+" : ""}${Number(tick.toFixed(tickPrecision))}</text></g>`).join("");
   const ranges = usable.filter((point) => point.runs > 1).map((point) => {
     const center = x(point.documentVersion), low = y(point.minDelta ?? point.delta), high = y(point.maxDelta ?? point.delta);
     return `<g class="score-range"><title>#${point.documentVersion} · ${escapeHtml(point.documentTitle)}: ${signed(point.minDelta ?? point.delta)} to ${signed(point.maxDelta ?? point.delta)} across ${point.runs} runs</title><line x1="${center}" x2="${center}" y1="${high}" y2="${low}"/><line x1="${center - 5}" x2="${center + 5}" y1="${high}" y2="${high}"/><line x1="${center - 5}" x2="${center + 5}" y1="${low}" y2="${low}"/></g>`;
   }).join("");
-  const labels = usable.map((point) => `<text class="x-label" x="${x(point.documentVersion)}" y="${height - 8}">#${point.documentVersion}</text>`).join("");
-  const dots = usable.map((point) => `<circle class="dot" cx="${x(point.documentVersion)}" cy="${y(point.delta)}" r="4"><title>#${point.documentVersion} · ${escapeHtml(point.documentTitle)}: ${signed(point.delta)}</title></circle>`).join("");
-  return `<svg id="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Score change by document version"><line class="axis" x1="${side}" x2="${width-side}" y1="${y(0)}" y2="${y(0)}"/>${ranges}<path class="frontier-line" d="${line("frontier")}"/><path class="chart-line" d="${line("delta")}"/>${dots}${labels}</svg>`;
+  const labelEvery = Math.max(1, Math.ceil(usable.length / 14));
+  const labels = usable.map((point, index) => index % labelEvery === 0 || index === usable.length - 1 ? `<text class="x-label" x="${x(point.documentVersion)}" y="${height - 11}">#${point.documentVersion}</text>` : "").join("");
+  const wrapTitle = (value) => {
+    const text = String(value);
+    if (text.length <= 34) return [text];
+    const split = text.lastIndexOf(" ", 34);
+    const cut = split > 16 ? split : 34;
+    const remainder = text.slice(cut).trim();
+    return [text.slice(0, cut).trim(), remainder.length > 36 ? `${remainder.slice(0, 35)}…` : remainder];
+  };
+  const pointsMarkup = usable.map((point) => {
+    const center = x(point.documentVersion), centerY = y(point.delta);
+    const tooltipWidth = 236, titleLines = wrapTitle(point.documentTitle), tooltipHeight = titleLines.length > 1 ? 92 : 78;
+    const tooltipX = Math.max(left, Math.min(center - tooltipWidth / 2, width - right - tooltipWidth));
+    const tooltipY = centerY - tooltipHeight - 13 >= top ? centerY - tooltipHeight - 13 : centerY + 13;
+    const range = point.runs > 1 ? `${signed(point.minDelta)} to ${signed(point.maxDelta)}` : "Single run";
+    const title = `#${point.documentVersion} · ${point.documentTitle}. Score ${score(point.score)}. Change ${signed(point.delta)} percentage points. ${point.runs > 1 ? `Run range ${range}.` : "Single run."}`;
+    return `<g class="chart-point" tabindex="0" role="img" aria-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title><line class="chart-crosshair" x1="${center}" x2="${center}" y1="${top}" y2="${height - bottom}"/><circle class="chart-hit" cx="${center}" cy="${centerY}" r="15"/><circle class="dot" cx="${center}" cy="${centerY}" r="4.5"/><g class="chart-tooltip" transform="translate(${tooltipX} ${tooltipY})"><rect width="${tooltipWidth}" height="${tooltipHeight}" rx="7"/><text class="tooltip-title" x="12" y="18">#${point.documentVersion} · ${escapeHtml(titleLines[0])}</text>${titleLines[1] ? `<text class="tooltip-title" x="12" y="33">${escapeHtml(titleLines[1])}</text>` : ""}<text x="12" y="${titleLines.length > 1 ? 54 : 39}">Score <tspan>${score(point.score)}</tspan> · Change <tspan>${signed(point.delta)} pp</tspan></text><text x="12" y="${titleLines.length > 1 ? 72 : 57}">${point.runs > 1 ? `Run range ${range}` : "Single run"} · ${point.runs} run${point.runs === 1 ? "" : "s"}</text></g></g>`;
+  }).join("");
+  return `<svg id="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Score change from the original document by document version"><text class="chart-axis-title" x="${left}" y="10">CHANGE (PP)</text>${grid}<line class="x-axis" x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}"/>${ranges}<path class="frontier-line" d="${line("frontier")}"/><path class="chart-line" d="${line("delta")}"/>${labels}${pointsMarkup}</svg>`;
 }
 
 function documentName(document) {
@@ -330,8 +360,8 @@ function renderWorkspace() {
     <details class="context-card"><summary><span>${escapeHtml(workspace.contextTitle)}</span><span class="subtle">View context</span></summary><pre>${escapeHtml(workspace.contextContent)}</pre></details>
     ${groups.length ? `<div class="toolbar" style="justify-content:flex-start;margin:16px 0"><select id="group-select">${options}</select><select id="metric-select"><option value="">Overall score</option>${questionOptions}</select><div class="segmented"><button data-mode="max" class="${result?.mode === "max" ? "active" : ""}">${lowerSelected ? "Lowest" : "Highest"}</button><button data-mode="median" class="${result?.mode === "median" ? "active" : ""}">Median</button></div>${attachable.length ? `<select id="attach-select"><option value="">＋ Attach group…</option>${attachable.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}<button class="primary evaluate-all" id="evaluate-all" ${state.batch || state.evaluating || !unevaluated.length ? "disabled" : ""}>${currentBatch ? `<span class="spinner"></span> ` : ""}${batchLabel}</button></div>` : `<div class="empty-card"><strong>No evaluation group attached</strong><p class="subtle">Create a reusable group or attach one from the group library.</p><button class="primary" id="workspace-new-group">Create group</button>${allGroups.length ? `<select id="attach-select" style="margin-top:10px"><option value="">Attach existing…</option>${allGroups.map((g)=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("")}</select>` : ""}</div>`}
     ${result ? `<div class="grid">
-      <article class="chart-card"><div class="card-head"><div><h2>Progress from original</h2><p>Document score (solid) · best so far (dotted) · run range (I)</p></div><span class="metric-note">${escapeHtml(result.question?.text || "Overall")} · percentage points</span></div>${chartSvg(result.timeline)}</article>
-      <article class="chart-card"><div class="card-head"><div><h2>Current leader</h2><p>${result.mode === "max" ? `${lowerSelected ? "Lowest" : "Highest"} score ever` : "Median across runs"}</p></div>${best ? `<span class="badge best">Best</span>` : ""}</div>${best ? `<h3 style="font-size:22px;margin:24px 0 4px"><span class="version-tag">${versionLabel(best)}</span>${escapeHtml(best.title)}</h3><div class="stats"><div class="stat"><strong>${score(best.rankScore)}</strong><span>rank score</span></div><div class="stat"><strong>${best.runs}</strong><span>runs</span></div><div class="stat"><strong>${best.runs > 1 ? score(best.spread) : "—"}</strong><span>spread</span></div></div>` : `<div class="chart-empty">No scores yet.</div>`}</article>
+      <article class="chart-card progress-card"><div class="card-head"><div><h2>Progress from original</h2><p>Positive values are better than document #0.</p><div class="chart-legend"><span><i class="legend-score"></i>Document</span><span><i class="legend-best"></i>Best so far</span><span><i class="legend-range"></i>Run range</span></div></div><span class="metric-note">${escapeHtml(result.question?.text || "Overall")} · percentage points</span></div>${chartSvg(result.timeline)}</article>
+      <article class="chart-card leader-card"><div class="card-head"><div><h2>Current leader</h2><p>${result.mode === "max" ? `${lowerSelected ? "Lowest" : "Highest"} score ever` : "Median across runs"}</p></div>${best ? `<span class="badge best">Best</span>` : ""}</div>${best ? `<div class="leader-summary"><h3><span class="version-tag">${versionLabel(best)}</span>${escapeHtml(best.title)}</h3><div class="stats"><div class="stat"><strong>${score(best.rankScore)}</strong><span>rank score</span></div><div class="stat"><strong>${best.runs}</strong><span>runs</span></div><div class="stat"><strong>${best.runs > 1 ? score(best.spread) : "—"}</strong><span>spread</span></div></div></div>` : `<div class="chart-empty">No scores yet.</div>`}</article>
     </div>` : ""}
     <article class="table-card" style="margin-top:16px"><div class="table-title"><div><h2>Documents</h2>${active ? `<span class="subtle">${escapeHtml(active.name)} · ${state.tableView === "metrics" && result.mode === "max" ? "best observed" : result.mode === "max" ? extremeLabel : "median"}</span>` : ""}</div>${matrix ? `<div class="segmented table-toggle"><button data-table-view="metrics" class="${state.tableView === "metrics" ? "active" : ""}">All metrics</button><button data-table-view="ranking" class="${state.tableView === "ranking" ? "active" : ""}">Ranking</button></div>` : ""}</div>
       ${state.tableView === "metrics" && matrix ? metricsTable(workspace, matrix, Boolean(active)) : rankingTable(workspace, ranked, Boolean(active))}</article>
@@ -512,6 +542,7 @@ $("#new-workspace").onclick = () => $("#workspace-dialog").showModal();
 $("#manage-groups").onclick = renderGroups;
 $("#open-settings").onclick = () => renderSettings().catch((error) => toast(error.message, true));
 document.addEventListener("click", (event) => { const menu = $("#workspace-menu"); if (menu?.open && !menu.contains(event.target)) menu.removeAttribute("open"); });
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && document.activeElement?.classList.contains("chart-point")) document.activeElement.blur(); });
 $$('[data-close]').forEach((button) => button.onclick = () => button.closest("dialog").close());
 $("#workspace-form").addEventListener("submit", async (event) => { event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); try { const workspace = await api("/api/workspaces", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) }); formElement.reset(); $("#workspace-dialog").close(); state.group = null; state.question = ""; state.mode = null; await openWorkspace(workspace.id); } catch (error) { toast(error.message, true); } });
 $("#group-form").addEventListener("submit", async (event) => { event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); const data = Object.fromEntries(form); const lines = (value) => String(value || "").split(/\r?\n/).map((line)=>line.trim()).filter(Boolean); data.questions = [...lines(data.questions).map((text) => ({ text, direction: "higher" })), ...lines(data.lowerQuestions).map((text) => ({ text, direction: "lower" }))]; delete data.lowerQuestions; try { const group = await api("/api/groups", { method: "POST", body: JSON.stringify(data) }); formElement.reset(); $("#group-dialog").close(); toast(`Created ${group.name}`); if (state.workspace) { await api(`/api/workspaces/${state.workspace.workspace.id}/groups`, { method: "POST", body: JSON.stringify({ group: group.id }) }); await api(`/api/workspaces/${state.workspace.workspace.id}`, { method: "PATCH", body: JSON.stringify({ primaryGroup: group.id }) }); openWorkspace(state.workspace.workspace.id, { group: group.id, question: "" }); } else renderGroups(); } catch (error) { toast(error.message, true); } });

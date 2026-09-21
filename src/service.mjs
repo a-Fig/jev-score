@@ -292,7 +292,7 @@ export function ranking(db, workspaceRef, { group: groupRef = null, question = n
       frontier = Math.max(frontier, delta ?? item.rankScore);
       return {
         documentId: item.id, documentVersion: item.version, documentTitle: item.title,
-        runs: item.runs, delta, minDelta, maxDelta, frontier: round(frontier),
+        runs: item.runs, score: item.rankScore, delta, minDelta, maxDelta, frontier: round(frontier),
       };
     });
   return { workspace: { id: workspace.id, name: workspace.name }, group: { id: group.id, name: group.name }, question: questionInfo, mode: rankingMode, items, timeline };
