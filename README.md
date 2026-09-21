@@ -7,7 +7,17 @@
 
 ## Give your coding agent a scoreboard
 
-Your agent can produce ten plausible rewrites before lunch. Jev Score keeps them honest.
+Give Claude three files: your resume, the job posting, and an evaluation group you wrote. The group is a plain-text list of the questions you want every draft to answer:
+
+```text
+Is the resume organized and easy to scan?
+Does the resume demonstrate strong fit for the role?
+Does the resume use specific, credible evidence?
+Does the resume feel authentic?
+Would this candidate likely receive an interview?
+```
+
+Claude rewrites the resume. Jev scores it against the job posting and those questions. Claude uses the weak scores as its next edit brief, then repeats.
 
 ```text
 agent> Rewrote the resume.
@@ -15,9 +25,9 @@ you>   Better?
 jev>   Evidence 76.0 -> 99.3. Authenticity 77.8 -> 96.3.
 ```
 
-**Jev Score is a test suite for writing.** Give it a document, the context that document must satisfy, and the questions that define "good." Your coding agent handles the edits; [TypeSafe's Jev model](https://www.typesafe.ai/) evaluates through OpenRouter; a local SQLite database keeps every draft and run.
+**Jev Score is a test suite for writing.** Your coding agent handles the edits; [TypeSafe's Jev model](https://www.typesafe.ai/) evaluates through OpenRouter; a local SQLite database keeps every draft and run.
 
-Use it for a resume against a job posting, an essay against its prompt, a spec against requirements, or a landing page against its positioning.
+The same loop works for an essay against its prompt, a spec against requirements, or a landing page against its positioning.
 
 ![Jev Score workspace showing a progress chart, current leader, and per-question scores for three README drafts](./docs/assets/workspace.png)
 
