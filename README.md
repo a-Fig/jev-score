@@ -41,7 +41,7 @@ The same loop works for an essay and its assignment, a product spec and its requ
 
 This README was picked by scoring it against its alternatives. Nine drafts (the original, the previous version, and seven rewrites) went through one evaluation group of 12 questions. Eight questions have higher as better, such as "I understand what this project does within 30 seconds of reading". Four have lower as better: em dashes, defining things by what they are not, stock buzzwords, and slogans. Each draft was scored 3 to 6 times, and the Documents panel below is in "median" mode:
 
-![Jev Score Documents panel: median scores on 12 questions for nine README drafts, with draft #6 highest at 92.0 overall](./docs/assets/readme-eval.png)
+![Jev Score Documents panel: median scores on 12 questions for nine README drafts, with draft #6 highest at 92.0 overall](./docs/assets/readme-eval.jpg)
 
 Columns are numbered by draft. #0 is the original README, #1 is the previous README, and #6 is this one, which had the highest overall median. The other columns are alternative rewrites that scored lower.
 
