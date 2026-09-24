@@ -21,7 +21,7 @@ test("existing databases migrate questions to higher-is-better", () => {
   legacy.close();
   const db = openDatabase(path);
   assert.equal(db.prepare("SELECT direction FROM evaluation_questions").get().direction, "higher");
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 2);
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 3);
   db.close();
 });
 
@@ -73,14 +73,14 @@ test("max and median modes select different best documents", async () => {
   const maximum = ranking(db, workspace.id, { mode: "max" });
   assert.equal(maximum.items[0].title, "Volatile");
   assert.deepEqual(maximum.timeline, [
-    { documentId: volatile.id, documentVersion: 0, documentTitle: "Volatile", runs: 2, score: 100, delta: 0, minDelta: -80, maxDelta: 0, frontier: 0 },
-    { documentId: steady.id, documentVersion: 1, documentTitle: "Steady", runs: 1, score: 70, delta: -30, minDelta: -30, maxDelta: -30, frontier: 0 },
+    { documentId: volatile.id, documentVersion: 0, documentTitle: "Volatile", parentDocumentId: null, runs: 2, score: 100, delta: 0, minDelta: -80, maxDelta: 0, frontier: 0 },
+    { documentId: steady.id, documentVersion: 1, documentTitle: "Steady", parentDocumentId: null, runs: 1, score: 70, delta: -30, minDelta: -30, maxDelta: -30, frontier: 0 },
   ]);
   const middle = ranking(db, workspace.id, { mode: "median" });
   assert.equal(middle.items[0].title, "Steady");
   assert.deepEqual(middle.timeline, [
-    { documentId: volatile.id, documentVersion: 0, documentTitle: "Volatile", runs: 2, score: 60, delta: 0, minDelta: -40, maxDelta: 40, frontier: 0 },
-    { documentId: steady.id, documentVersion: 1, documentTitle: "Steady", runs: 1, score: 70, delta: 10, minDelta: 10, maxDelta: 10, frontier: 10 },
+    { documentId: volatile.id, documentVersion: 0, documentTitle: "Volatile", parentDocumentId: null, runs: 2, score: 60, delta: 0, minDelta: -40, maxDelta: 40, frontier: 0 },
+    { documentId: steady.id, documentVersion: 1, documentTitle: "Steady", parentDocumentId: null, runs: 1, score: 70, delta: 10, minDelta: 10, maxDelta: 10, frontier: 10 },
   ]); db.close();
 });
 
@@ -99,7 +99,7 @@ test("lower-is-better questions invert the default mean and ranking direction", 
   assert.equal(result.items[0].title, "Revision");
   assert.equal(result.items[0].rankScore, 10);
   assert.equal(result.items[0].delta, 30);
-  assert.deepEqual(result.timeline[1], { documentId: revision.id, documentVersion: 1, documentTitle: "Revision", runs: 2, score: 10, delta: 30, minDelta: 20, maxDelta: 30, frontier: 30 });
+  assert.deepEqual(result.timeline[1], { documentId: revision.id, documentVersion: 1, documentTitle: "Revision", parentDocumentId: null, runs: 2, score: 10, delta: 30, minDelta: 20, maxDelta: 30, frontier: 30 });
   assert.equal(scoreMatrix(db, workspace.id, { mode: "max" }).rows.find((row) => row.id === revision.id).scores.risk, 10);
   db.close();
 });

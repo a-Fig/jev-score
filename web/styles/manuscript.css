@@ -1,0 +1,66 @@
+/* The manuscript: how drafts read, and how changes are marked. Deletions are
+   struck through in red pen; insertions are underlined in blue pencil. */
+
+.manuscript { font: 400 18.5px/1.7 var(--serif); color: var(--ink); max-width: 70ch; overflow-wrap: break-word; }
+.manuscript > :first-child { margin-top: 0; }
+.manuscript h1, .manuscript h2, .manuscript h3, .manuscript h4, .manuscript h5, .manuscript h6 { font-weight: 550; line-height: 1.2; margin: 1.5em 0 .45em; }
+.manuscript h1 { font-size: 2em; letter-spacing: -.02em; font-weight: 500; }
+.manuscript h2 { font-size: 1.42em; }
+.manuscript h3 { font-size: 1.16em; }
+.manuscript h4, .manuscript h5, .manuscript h6 { font-size: 1em; font-style: italic; }
+.manuscript p, .manuscript ul, .manuscript ol, .manuscript blockquote, .manuscript pre, .manuscript .table-wrap { margin: 0 0 .95em; }
+.manuscript ul, .manuscript ol { padding-left: 1.4em; }
+.manuscript li { margin: .2em 0; }
+.manuscript li::marker { color: var(--pencil); }
+.manuscript ul ul, .manuscript ol ol, .manuscript ul ol, .manuscript ol ul { margin: .2em 0; }
+.manuscript li.task { list-style: none; margin-left: -1.3em; }
+.manuscript .check { display: inline-block; width: .8em; height: .8em; border: 1.5px solid var(--pencil); border-radius: 3px; margin-right: .5em; vertical-align: -.05em; }
+.manuscript .check.done { background: var(--ink); border-color: var(--ink); }
+.manuscript blockquote { margin-left: 0; padding-left: 1.1em; border-left: 2px solid var(--rule-strong); color: var(--graphite); font-style: italic; }
+.manuscript code { font: .78em var(--mono); background: var(--leaf-2); border: 1px solid var(--rule); border-radius: 4px; padding: .05em .3em; }
+.manuscript pre { background: var(--leaf-2); border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: 14px 16px; overflow-x: auto; }
+.manuscript pre code { background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.6; }
+.manuscript a { color: var(--blue-ink); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.manuscript hr { border: 0; text-align: center; margin: 1.8em 0; }
+.manuscript hr::after { content: "⁂"; color: var(--pencil); font-size: .9em; }
+.manuscript img { max-width: 100%; height: auto; border-radius: 6px; }
+.manuscript strong { font-weight: 650; }
+.manuscript del { text-decoration-color: var(--vermilion); }
+.manuscript .table-wrap { overflow-x: auto; }
+.manuscript table { border-collapse: collapse; font: 14px/1.45 var(--sans); width: 100%; }
+.manuscript th, .manuscript td { border-bottom: 1px solid var(--rule); padding: 7px 10px; text-align: left; }
+.manuscript th { font-weight: 650; border-bottom-color: var(--rule-strong); }
+.source { font: 13.5px/1.65 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; color: var(--ink); }
+
+/* Tracked changes, single column. */
+.changes { font: 400 17.5px/1.75 var(--serif); }
+.changes .line { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.75em; padding-left: 14px; position: relative; }
+.changes .line.changed::before, .changes .line.added::before, .changes .line.removed::before { content: ""; position: absolute; left: 0; top: .3em; bottom: .3em; width: 2px; border-radius: 2px; }
+.changes .line.changed::before { background: linear-gradient(var(--vermilion) 50%, var(--blue-pencil) 50%); }
+.changes .line.added::before { background: var(--blue-pencil); }
+.changes .line.removed::before { background: var(--vermilion); }
+.changes .line.removed { color: var(--graphite); }
+.changes del, .diff-cell mark.del { text-decoration: line-through; text-decoration-color: var(--vermilion); text-decoration-thickness: 1.6px; color: var(--graphite); background: var(--vermilion-wash); border-radius: 2px; }
+.changes ins, .diff-cell mark.ins { text-decoration: underline; text-decoration-color: var(--blue-pencil); text-decoration-thickness: 1.6px; text-underline-offset: 3px; color: var(--ink); background: var(--blue-wash); border-radius: 2px; }
+.changes .fold { display: block; margin: 8px 0; padding: 6px 12px; border: 1px dashed var(--rule-strong); border-radius: 6px; background: none; color: var(--pencil); font: 12.5px var(--sans); cursor: pointer; width: 100%; text-align: left; }
+.changes .fold:hover { color: var(--ink); border-color: var(--pencil); }
+.changes .none { color: var(--pencil); font: 14px var(--sans); }
+
+/* Side-by-side line diff. */
+.diff { border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; background: var(--leaf); }
+.diff-head { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--rule); background: var(--leaf-2); font-size: 12.5px; }
+.diff-head div { padding: 10px 14px; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.diff-head div + div { border-left: 1px solid var(--rule); }
+.diff-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-row { display: grid; grid-template-columns: 1fr 1fr; }
+.diff-cell { display: grid; grid-template-columns: 38px minmax(0, 1fr); font: 12.5px/1.6 var(--mono); min-width: 0; }
+.diff-cell + .diff-cell { border-left: 1px solid var(--rule); }
+.diff-cell .n { padding: 1px 8px 1px 0; text-align: right; color: var(--pencil); user-select: none; font-size: 11px; }
+.diff-cell code { padding: 1px 12px 1px 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-cell.removed { background: color-mix(in srgb, var(--vermilion) 6%, transparent); }
+.diff-cell.added { background: color-mix(in srgb, var(--blue-pencil) 7%, transparent); }
+.diff-cell.empty { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--rule) 45%, transparent) 6px 7px); }
+.diff-cell mark { color: inherit; }
+.diff-fold { grid-column: 1 / -1; }
+.diff-fold button { width: 100%; border: 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); background: var(--leaf-2); color: var(--pencil); padding: 5px; font-size: 12px; cursor: pointer; }
+.diff-fold button:hover { color: var(--ink); }

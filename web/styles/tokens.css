@@ -1,0 +1,93 @@
+/* Jev Score: an editor's desk. Warm paper, ink, a red pen (vermilion) for
+   what needs work, and a blue pencil for what changed. Newsreader sets the
+   writing; Libre Franklin sets the interface and every number. */
+
+@font-face { font-family: "Newsreader"; font-style: normal; font-weight: 200 800; font-display: swap; src: url(/fonts/newsreader-latin-opsz-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Newsreader"; font-style: normal; font-weight: 200 800; font-display: swap; src: url(/fonts/newsreader-latin-ext-opsz-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Newsreader"; font-style: italic; font-weight: 200 800; font-display: swap; src: url(/fonts/newsreader-latin-opsz-italic.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Newsreader"; font-style: italic; font-weight: 200 800; font-display: swap; src: url(/fonts/newsreader-latin-ext-opsz-italic.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Libre Franklin"; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/libre-franklin-latin-wght-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Libre Franklin"; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/libre-franklin-latin-ext-wght-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/ibm-plex-mono-latin-ext-400-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url(/fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root {
+  color-scheme: light;
+  /* Paper and ink */
+  --paper: #f4f0e6;
+  --leaf: #fdfbf7;
+  --leaf-2: #f8f4ec;
+  --ink: #1b1916;
+  --graphite: #57524a;
+  --pencil: #736c60;
+  --rule: #e2dccf;
+  --rule-strong: #cdc4b3;
+  --hover: rgb(27 25 22 / .045);
+  /* The red pen and the blue pencil (validated as a two-series chart palette) */
+  --vermilion: #d4402a;
+  --vermilion-ink: #b3321e;
+  --vermilion-wash: rgb(212 64 42 / .09);
+  --blue-pencil: #2d62c4;
+  --blue-ink: #24519f;
+  --blue-wash: rgb(45 98 196 / .1);
+  /* Better / worse, always paired with a sign or arrow */
+  --good: #1e7a4a;
+  --good-wash: rgb(30 122 74 / .1);
+  --bad: #b3361f;
+  --bad-wash: rgb(179 54 31 / .09);
+  --shadow-sm: 0 1px 2px rgb(52 40 18 / .06);
+  --shadow: 0 1px 2px rgb(52 40 18 / .05), 0 10px 30px rgb(52 40 18 / .08);
+  --shadow-lg: 0 2px 6px rgb(52 40 18 / .08), 0 24px 64px rgb(52 40 18 / .16);
+  --radius: 10px;
+  --radius-sm: 7px;
+  --serif: "Newsreader", "Iowan Old Style", Charter, "Palatino Linotype", Georgia, serif;
+  --sans: "Libre Franklin", "Franklin Gothic Book", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sidebar-width: 258px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --paper: #13110e; --leaf: #1c1a16; --leaf-2: #221f1a; --ink: #f1ece2; --graphite: #c2baac; --pencil: #979084;
+    --rule: #2e2a24; --rule-strong: #423c33; --hover: rgb(241 236 226 / .05);
+    --vermilion: #e5563d; --vermilion-ink: #f07a62; --vermilion-wash: rgb(229 86 61 / .14);
+    --blue-pencil: #5b8ae0; --blue-ink: #86a9ea; --blue-wash: rgb(91 138 224 / .16);
+    --good: #5dbb82; --good-wash: rgb(93 187 130 / .13); --bad: #f07a62; --bad-wash: rgb(240 122 98 / .13);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / .3); --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 30px rgb(0 0 0 / .35); --shadow-lg: 0 2px 6px rgb(0 0 0 / .4), 0 24px 64px rgb(0 0 0 / .5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #13110e; --leaf: #1c1a16; --leaf-2: #221f1a; --ink: #f1ece2; --graphite: #c2baac; --pencil: #979084;
+  --rule: #2e2a24; --rule-strong: #423c33; --hover: rgb(241 236 226 / .05);
+  --vermilion: #e5563d; --vermilion-ink: #f07a62; --vermilion-wash: rgb(229 86 61 / .14);
+  --blue-pencil: #5b8ae0; --blue-ink: #86a9ea; --blue-wash: rgb(91 138 224 / .16);
+  --good: #5dbb82; --good-wash: rgb(93 187 130 / .13); --bad: #f07a62; --bad-wash: rgb(240 122 98 / .13);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .3); --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 30px rgb(0 0 0 / .35); --shadow-lg: 0 2px 6px rgb(0 0 0 / .4), 0 24px 64px rgb(0 0 0 / .5);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 14px/1.5 var(--sans);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1, h2, h3, h4 { font-family: var(--serif); font-weight: 500; letter-spacing: -.012em; margin: 0; font-optical-sizing: auto; }
+p { margin: 0; }
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+code, kbd, pre { font-family: var(--mono); }
+:focus-visible { outline: 2px solid var(--blue-pencil); outline-offset: 2px; border-radius: 4px; }
+::selection { background: color-mix(in srgb, var(--blue-pencil) 24%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+[hidden] { display: none !important; }
