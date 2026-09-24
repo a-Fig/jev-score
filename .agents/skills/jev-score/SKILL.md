@@ -1,76 +1,69 @@
 ---
 name: jev-score
-description: Store, evaluate, and compare text or Markdown revisions against context and reusable criteria with Jev through OpenRouter. Use for iterative work on resumes, essays, specifications, cover letters, webpages, and similar documents. The coding agent owns editing and iteration; Jev Score is the system of record and evaluator.
+description: Store, score, and compare revisions of a text or Markdown document against a context (job posting, essay prompt, brief) and reusable questions, using Jev through OpenRouter. Use for iterative work on resumes, cover letters, essays, emails, READMEs, landing pages, specs, and similar documents. The coding agent writes the revisions; Jev Score is the system of record and the evaluator.
 ---
 
 # Jev Score
 
-Use the CLI as the agent interface. It prints JSON and shares its SQLite database with the localhost UI. Do not edit the database directly.
+Use the CLI (or the `jev-score mcp` tools, if they are connected) as your interface. The CLI prints JSON when its output is piped; pass `--json` to be sure. It shares one SQLite database with the local app, so the user can watch every draft and score arrive live in `jev-score ui`. Never edit the database directly.
 
-## General workflow
+## The loop
 
-1. Reuse a suitable evaluation group from `jev-score group list`, or create one. Phrase questions clearly and label each one as higher-is-better or lower-is-better. Higher is the default; prefix a plain-text question with `[lower]` when lower is better.
-2. Reuse or create a context-centered workspace. Attach the group and make it primary.
-3. Save the original document first. The first document in a workspace is marked original automatically.
-4. Ask Jev Score to evaluate it. Read individual question scores as well as the overall score.
-5. Make one coherent revision, save it with a short change summary and parent, then evaluate it.
-6. Use `rank` to compare revisions. Stop based on the user's goal and judgment; Jev Score does not edit or decide when to stop.
-7. Run `jev-score ui` when the user wants to inspect progress or work in the interface.
+1. **Set up once.** Check `jev-score workspace list` and `jev-score group list` before creating anything. For a new workspace, start from a template unless the user has their own questions: `jev-score group templates` lists them.
+2. **Save and score the original first.** The first draft in a workspace becomes the original, the baseline for every comparison.
+3. **Read the feedback.** `score` returns `overallScore`, `rank`, `vsParent`, `vsBest`, per-question `scores`, and the three `weakest` questions. Every delta is signed so that positive means better, including for lower-is-better questions.
+4. **Revise boldly.** Make one substantive revision aimed at the weakest questions: restructure, add concrete evidence, cut what doesn't serve the reader. Small word swaps move scores by less than Jev's run-to-run variation (one or two points) and teach you nothing.
+5. **Save and score the revision** with a short title, a one-line `--summary` of what changed, and `--parent` set to the draft you revised.
+6. **Repeat** from the best draft. Stop when the user's goal is met or two or three bold revisions in a row fail to beat the best.
 
-Repeated evaluations of identical content create separate runs but not duplicate documents. Rankings default to the best observed score: highest for higher-is-better metrics and lowest for lower-is-better metrics. Use median mode when the user wants repeated-run stability. Always preserve meaningful user facts and voice while editing.
+Score each draft once. Use `--runs 3` only to decide between the top two drafts when they are within about two points, then compare medians (`jev-score rank <ws> --mode median`). Always preserve the user's facts and voice: never invent experience, numbers, or claims.
 
 ## CLI
 
-Inspect available state before creating duplicates:
+Set up:
 
 ```bash
-jev-score group list
-jev-score workspace list
+jev-score group templates
+jev-score workspace create --name "Acme role" --context ./job.md --template resume
+# or, with your own questions (one per line; prefix [lower] when lower is better):
+jev-score group create --name "Acme review" --questions ./questions.txt
+jev-score workspace create --name "Acme role" --context ./job.md --context-title "Job posting" --group "Acme review"
 ```
 
-Create a group and workspace:
+Score a file directly; Jev Score saves it before scoring:
 
 ```bash
-jev-score group create --name "Resume review" --questions ./questions.txt
-jev-score workspace create --name "Acme role" --context ./job.md --context-title "Job posting" --group "Resume review"
+jev-score score "Acme role" ./resume.md --title "Original resume" --json
+jev-score score "Acme role" ./resume-v2.md --title "Outcome-first" --summary "Led every bullet with a result" --parent "#0" --json
 ```
 
-Score a file directly. Jev Score stores it before calling the API:
+Reference drafts by ID, title, or version number (`"#3"`). Version numbers are never reused.
+
+Compare and inspect:
 
 ```bash
-jev-score score "Acme role" ./resume.md --title "Original resume"
+jev-score rank "Acme role" --json
+jev-score rank "Acme role" --question evidence --json       # keys: jev-score group show <group>
+jev-score document get "Acme role" "#4" --out ./restored.md
+jev-score score "Acme role" "#4" --runs 3 --json            # tie-breaks only
 ```
 
-Save and score later revisions:
+Share results:
 
 ```bash
-jev-score document add "Acme role" ./resume-v2.md --title "Outcome-focused" --summary "Quantified recent work" --parent "Original resume"
-jev-score score "Acme role" "Outcome-focused" --note "iteration 2"
+jev-score report "Acme role" --out ./report.md    # or .html
+jev-score ui                                      # open the app
 ```
 
-Compare documents overall or by one question key:
+Run `jev-score --help` for every command and `jev-score doctor` if scoring fails.
 
-```bash
-jev-score rank "Acme role"
-jev-score rank "Acme role" --question strong-fit
-jev-score workspace mode "Acme role" median
-```
+## Rules worth knowing
 
-Retrieve a stored draft or open the UI:
-
-```bash
-jev-score document get "Acme role" "Outcome-focused" --out ./restored.md
-jev-score ui
-```
-
-Run `jev-score --help` for the complete command list. Names and IDs are accepted as references.
-
-## Evaluation group rules
-
-Questions and custom scorer code are immutable after a group's first run. Rename is allowed. Deleting a group deletes every run and score created with it. Create a new group when criteria or scorer behavior must change.
-
-Custom scorer files export one synchronous default function that receives raw `{ question_key: normalizedScore }` values and returns a finite 0–100 number. A custom scorer replaces the automatic direction-aware mean, so its code must invert lower-is-better inputs when desired. Treat scorer files as trusted local code.
+- **Questions lock after the first scored run.** Names and descriptions can always change. To change questions afterwards, fork the group (`jev-score group fork <group>`) and attach the fork.
+- **Changing the context marks older runs stale.** `jev-score workspace context <ws> --file <file>` keeps every run, but rankings only count runs scored against the current context. Re-score the drafts that matter.
+- **A spend limit may be set.** If scoring fails with "Spend limit reached", stop and tell the user; do not try to raise or reset it yourself.
+- **Custom scorer files** export one synchronous default function that receives `{ question_key: score }` and returns 0 to 100. It replaces the direction-aware mean, so it must invert lower-is-better questions itself. Treat scorer files as trusted local code.
 
 ## Credentials and data
 
-Keep `OPENROUTER_API_KEY` in `.env.local` or the environment. Never put credentials in documents, contexts, evaluation metadata, logs, or source control. Documents and context are stored locally and sent to OpenRouter only when an evaluation runs.
+Keep `OPENROUTER_API_KEY` in `.env.local` or the environment. Never put credentials in drafts, contexts, notes, logs, or commits. Drafts and contexts are stored locally and sent to OpenRouter only when a draft is scored.

@@ -2,63 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f4f0e6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#13110e" media="(prefers-color-scheme: dark)">
   <title>Jev Score</title>
-  <link rel="stylesheet" href="/app.css">
-  <link rel="stylesheet" href="/details.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/newsreader-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/libre-franklin-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/app.css">
+  <link rel="stylesheet" href="/styles/manuscript.css">
+  <script src="/theme-boot.js"></script>
 </head>
 <body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="mobile-bar">
+    <button class="btn icon quiet" id="open-nav" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"></button>
+    <a class="brand" href="/" data-link><span class="caret" aria-hidden="true">‸</span><em>Jev</em>&nbsp;Score</a>
+    <button class="btn icon quiet" id="open-palette-mobile" aria-label="Search"></button>
+  </header>
   <div class="shell">
-    <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">J</span><span>Jev Score</span></div>
-      <button class="primary full" id="new-workspace">＋ New workspace</button>
-      <nav id="workspace-list" aria-label="Workspaces"></nav>
-      <div class="side-bottom">
-        <button class="ghost full" id="manage-groups">Evaluation groups <span>⌘</span></button>
-        <button class="ghost full" id="open-settings">Settings <span>⚙</span></button>
-      </div>
-    </aside>
+    <aside class="sidebar" id="sidebar" aria-label="Navigation"></aside>
     <main id="main" tabindex="-1"></main>
   </div>
-  <div id="toast" role="status" aria-live="polite"></div>
-  <div id="compare-tray" aria-live="polite"></div>
-
-  <dialog id="workspace-dialog">
-    <form method="dialog" id="workspace-form">
-      <header><div><p class="eyebrow">New workspace</p><h2>What are you optimizing?</h2></div><button type="button" data-close class="icon" aria-label="Close">×</button></header>
-      <label>Name<input name="name" required placeholder="Senior designer application"></label>
-      <label>Context title<input name="contextTitle" placeholder="Job posting"></label>
-      <label>Context<textarea name="contextContent" rows="11" required placeholder="Paste the job posting, essay prompt, spec, or other context…"></textarea></label>
-      <label>Primary evaluation group<select name="primaryGroup"><option value="">Choose later</option></select></label>
-      <footer><button type="button" data-close class="ghost">Cancel</button><button value="default" class="primary">Create workspace</button></footer>
-    </form>
-  </dialog>
-
-  <dialog id="group-dialog">
-    <form method="dialog" id="group-form">
-      <header><div><p class="eyebrow">Reusable rubric</p><h2>New evaluation group</h2></div><button type="button" data-close class="icon" aria-label="Close">×</button></header>
-      <label>Name<input name="name" required placeholder="Resume quality"></label>
-      <label>Description<input name="description" placeholder="A balanced hiring review"></label>
-      <label>Higher is better <span class="hint">one question per line</span><textarea name="questions" rows="6" placeholder="Is this resume easy to scan?&#10;Does it demonstrate strong fit for the role?&#10;Does it feel authentic?"></textarea></label>
-      <label>Lower is better <span class="hint">optional</span><textarea name="lowerQuestions" rows="4" placeholder="Does this resume contain red flags?&#10;Does the writing feel generic or artificial?"></textarea></label>
-      <footer><button type="button" data-close class="ghost">Cancel</button><button value="default" class="primary">Create group</button></footer>
-    </form>
-  </dialog>
-
-  <dialog id="document-dialog">
-    <form method="dialog" id="document-form">
-      <header><div><p class="eyebrow">Add a revision</p><h2>Upload document</h2></div><button type="button" data-close class="icon" aria-label="Close">×</button></header>
-      <label>Text or Markdown file<input name="file" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" required></label>
-      <label>Title<input name="title" placeholder="Filled from filename"></label>
-      <label>What changed? <span class="hint">optional</span><input name="changeSummary" placeholder="Tighter opening and clearer outcomes"></label>
-      <label>Based on <select name="parentDocument"><option value="">No parent</option></select></label>
-      <footer><button type="button" data-close class="ghost">Cancel</button><button value="default" class="primary">Add document</button></footer>
-    </form>
-  </dialog>
-
-  <dialog id="viewer-dialog" class="viewer"><div id="viewer"></div></dialog>
-  <dialog id="compare-dialog" class="compare-dialog"><div id="comparison"></div></dialog>
+  <div class="scrim" id="scrim"></div>
+  <div id="toasts" role="status" aria-live="polite"></div>
+  <div id="tray-slot"></div>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <dialog id="palette" class="palette" aria-label="Search and commands"></dialog>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

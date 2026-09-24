@@ -1,13 +1,12 @@
 {
   "name": "jev-score",
-  "version": "1.0.0",
-  "description": "Local-first document evaluation workspaces powered by Jev.",
+  "version": "2.0.0",
+  "description": "Score drafts against context with Jev, locally. A CLI, MCP server, and editor for iterating on writing with Claude Code or Codex.",
   "license": "MIT",
-  "keywords": ["jev", "evaluation", "writing", "openrouter", "codex", "claude-code"],
+  "keywords": ["jev", "evaluation", "writing", "openrouter", "codex", "claude-code", "mcp", "rubric", "editor"],
   "repository": { "type": "git", "url": "git+https://github.com/a-Fig/jev-score.git" },
   "homepage": "https://github.com/a-Fig/jev-score#readme",
   "bugs": { "url": "https://github.com/a-Fig/jev-score/issues" },
-  "publishConfig": { "access": "public" },
   "files": [
     ".env.example",
     "bin/",
@@ -28,9 +27,9 @@
   "scripts": {
     "start": "node ./bin/jev-score.mjs serve",
     "ui": "node ./bin/jev-score.mjs ui",
+    "mcp": "node ./bin/jev-score.mjs mcp",
     "test": "node --test ./test/*.test.mjs",
-    "pack:check": "npm pack --dry-run --json",
-    "prepack": "npm test"
+    "pack:check": "npm pack --dry-run --json"
   },
   "type": "module"
 }
