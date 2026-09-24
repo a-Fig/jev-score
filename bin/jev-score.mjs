@@ -17,7 +17,7 @@ import {
   matrixCsv, ranking, resetSpendCounter, resolveGroup, scoreDocument, setSpendLimit, spendStatus, updateDocument,
   updateGroup, updateWorkspace, usageSummary, workspaceDetail, workspaceSummary,
 } from "../src/service.mjs";
-import { TEMPLATES, findTemplate } from "../src/templates.mjs";
+import { TEMPLATES } from "../src/templates.mjs";
 import { delta, one, palette, plural, table } from "../src/terminal.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -170,6 +170,13 @@ const views = {
     detail.ranking ? `${detail.ranking.group.name} · ${detail.ranking.mode === "max" ? "best run" : "median"}` : c.gray("No evaluation group attached. Attach one with: jev-score group attach <ws> <group>"),
     ...(detail.ranking ? ["", views.rank(detail.ranking, c).split("\n").slice(2).join("\n")] : []),
   ].join("\n"),
+  document: (document, c) => `${c.gray(`#${document.version} ${document.title}${document.changeSummary ? ` · ${document.changeSummary}` : ""}`)}\n\n${document.content}`,
+  config: (config, c) => [
+    `${c.bold("Database")}     ${config.database}`,
+    `${c.bold("Model")}        ${config.model}`,
+    `${c.bold("API key")}      ${config.apiKey || c.red("not set")}`,
+    `${c.bold("Spend limit")}  ${config.spend.limit == null ? "off" : `$${config.spend.limit.toFixed(2)}`}; $${config.spend.spent.toFixed(4)} recorded${config.spend.since ? ` since ${config.spend.since.slice(0, 10)}` : ""}`,
+  ].join("\n"),
   documents: (items, c) => items.length ? table(items, [
     { label: "#", value: (item) => item.version, align: "right" },
     { label: "Title", value: (item) => `${item.title}${item.isOriginal ? c.gray(" (original)") : ""}`, flex: true },
@@ -283,11 +290,8 @@ async function run(area, action, positional, flags, db) {
     if (action === "list") return { value: listWorkspaces(db).map((workspace) => workspaceSummary(db, workspace.id)), view: "workspaces" };
     if (action === "show") return { value: workspaceDetail(db, requireArg(positional, 0, "workspace")), view: "workspace" };
     if (action === "create") {
-      let group = flags.group;
-      const starter = flags.template ? findTemplate(flags.template) : null;
-      if (flags.template && !starter) throw new Error(`Template not found: ${flags.template}. Run jev-score group templates.`);
-      if (!group && starter) group = createGroup(db, { template: starter.id }).id;
-      return { value: createWorkspace(db, { name: requireFlag(flags, "name"), contextTitle: flags["context-title"] || starter?.contextTitle, contextContent: await readFile(resolve(requireFlag(flags, "context")), "utf8"), primaryGroup: group }) };
+      const contextContent = await readFile(resolve(requireFlag(flags, "context")), "utf8");
+      return { value: createWorkspace(db, { name: requireFlag(flags, "name"), contextTitle: flags["context-title"], contextContent, primaryGroup: flags.group, template: flags.template }) };
     }
     if (action === "rename") return { value: updateWorkspace(db, requireArg(positional, 0, "workspace"), { name: requireArg(positional, 1, "new name") }) };
     if (action === "context") return { value: updateWorkspace(db, requireArg(positional, 0, "workspace"), { contextContent: await readFile(resolve(requireFlag(flags, "file")), "utf8"), ...(flags.title ? { contextTitle: flags.title } : {}) }) };
@@ -333,7 +337,7 @@ async function run(area, action, positional, flags, db) {
     if (action === "get") {
       const document = documentDetail(db, requireArg(positional, 0, "workspace"), requireArg(positional, 1, "document"));
       if (flags.out) { await writeFile(resolve(flags.out), document.content, "utf8"); return { value: { written: resolve(flags.out), documentId: document.id } }; }
-      return { value: document };
+      return { value: document, view: "document" };
     }
     if (action === "update") return { value: updateDocument(db, requireArg(positional, 0, "workspace"), requireArg(positional, 1, "document"), { title: flags.title, changeSummary: flags.summary, original: flags.original || undefined }) };
     if (action === "delete") { if (!flags.yes) throw new Error("Deleting a draft also deletes its runs. Re-run with --yes."); return { value: deleteDocument(db, requireArg(positional, 0, "workspace"), requireArg(positional, 1, "document")) }; }
@@ -357,7 +361,7 @@ async function run(area, action, positional, flags, db) {
     return { value: { written: resolve(flags.out), format } };
   }
   if (area === "config") {
-    if (action === "show" || !action) return { value: { database: databasePath(), model: process.env.OPENROUTER_JEV_MODEL || DEFAULT_MODEL, apiKey: maskKey(process.env.OPENROUTER_API_KEY), spend: spendStatus(db) } };
+    if (action === "show" || !action) return { value: { database: databasePath(), model: process.env.OPENROUTER_JEV_MODEL || DEFAULT_MODEL, apiKey: maskKey(process.env.OPENROUTER_API_KEY), spend: spendStatus(db) }, view: "config" };
     if (action === "spend-limit") {
       const value = requireArg(positional, 0, "amount in USD or off");
       return { value: { spend: setSpendLimit(db, ["off", "none"].includes(value.toLowerCase()) ? null : value) } };
@@ -372,8 +376,10 @@ async function main() {
   const args = process.argv.slice(2);
   if (!args.length || args.includes("--help") || args.includes("-h") || args[0] === "help") return help();
   if (args.includes("--version") || args[0] === "version") return process.stdout.write(`${version}\n`);
-  const [area, action, ...rest] = args;
-  const { positional, flags } = parse(["serve", "ui", "mcp", "doctor", "usage"].includes(area) ? args.slice(1) : rest);
+  // Flags may come anywhere; the first two positionals are the command.
+  const { positional: words, flags } = parse(args);
+  const [area, action, ...rest] = words;
+  const positional = ["serve", "ui", "mcp", "doctor", "usage"].includes(area) ? words.slice(1) : rest;
   const human = flags.human || (!flags.json && process.stdout.isTTY);
   const color = palette(human && process.stdout.isTTY && !process.env.NO_COLOR);
   const print = (value, view) => process.stdout.write(`${human ? (view ? views[view](value, color) : summarizeResult(value, color)) : JSON.stringify(value, null, 2)}\n`);
@@ -381,13 +387,14 @@ async function main() {
   if (area === "mcp") return runMcpServer({ version });
   if (area === "serve" || area === "ui") {
     const port = Number(flags.port || 4317);
-    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--port must be a number from 0 to 65535.");
+    if (!Number.isInteger(port) || port < (area === "ui" ? 1 : 0) || port > 65535) throw new Error(`--port must be a number from ${area === "ui" ? 1 : 0} to 65535.`);
     const url = `http://127.0.0.1:${port}`;
     const instanceId = databaseIdentity();
     if (area === "ui") {
       let status = null;
       try { status = await health(url); } catch {}
       if (status && (status.app !== "jev-score" || status.databaseId !== instanceId)) throw new Error(`Port ${port} is already serving a different application or Jev Score database. Choose another port with --port.`);
+      if (status && status.version !== version) throw new Error(`Jev Score ${status.version || "1.x"} is still serving this database on port ${port}. Stop that process (an earlier jev-score ui started it in the background), or run this version on another port with --port.`);
       if (!status) {
         const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "serve", "--port", String(port)], { detached: true, stdio: "ignore", windowsHide: true, cwd: process.cwd(), env: process.env });
         child.unref();

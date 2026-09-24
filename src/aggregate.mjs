@@ -11,9 +11,14 @@ export async function aggregateScores(group, scores, timeoutMs = 3_000) {
   if (group.scorerKind !== "javascript-v1" || !group.scorerSource) throw new Error(`Unsupported scorer: ${group.scorerKind}`);
   const scoreMap = Object.fromEntries(scores.map((item) => [item.key, item.score]));
   const result = await new Promise((resolve, reject) => {
+    // Scorer console output goes to stderr so it never corrupts JSON on stdout.
     const worker = new Worker(new URL("./scorer-worker.mjs", import.meta.url), {
       workerData: { source: group.scorerSource, scores: scoreMap },
+      stdout: true,
+      stderr: true,
     });
+    worker.stdout.pipe(process.stderr, { end: false });
+    worker.stderr.pipe(process.stderr, { end: false });
     const timeout = setTimeout(() => {
       worker.terminate();
       reject(new Error(`Custom scorer exceeded ${timeoutMs}ms.`));

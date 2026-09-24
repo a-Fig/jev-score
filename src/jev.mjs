@@ -84,7 +84,8 @@ export async function evaluateWithJev({
   }
   const scores = questions.map((question) => {
     const answer = payload.answers?.[question.key];
-    if (!Number.isFinite(answer?.score) || answer.score < 0 || answer.score > RUBRIC.length - 1) throw new Error(`Jev returned an invalid score for ${question.key}.`);
+    // The call was billed even when an answer is unusable, so keep its usage.
+    if (!Number.isFinite(answer?.score) || answer.score < 0 || answer.score > RUBRIC.length - 1) throw Object.assign(new Error(`Jev returned an invalid score for ${question.key}.`), { usage: payload.usage || null, model: payload.model || model, provider: payload.provider || "TypeSafe" });
     return {
       questionId: question.id,
       key: question.key,

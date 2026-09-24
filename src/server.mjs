@@ -1,6 +1,7 @@
 import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
+import { pipeline } from "node:stream";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { databaseIdentity, databasePath } from "./config.mjs";
@@ -46,8 +47,11 @@ async function readBody(request, limit = 10 * 1024 * 1024) {
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
-  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  let value;
+  try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
   catch { throw Object.assign(new Error("Request body must be valid JSON."), { status: 400 }); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw Object.assign(new Error("Request body must be a JSON object."), { status: 400 });
+  return value;
 }
 
 const CREATED = Symbol("created");
@@ -92,7 +96,10 @@ const routes = [
   route("DELETE", "/api/groups/:group", ({ db, params }) => deleteGroup(db, params.group)),
   route("POST", "/api/groups/:group/fork", async ({ db, params, body }) => created(forkGroup(db, params.group, { name: (await body()).name }))),
 
-  route("POST", "/api/workspaces", async ({ db, body }) => created(createWorkspace(db, await body()))),
+  route("POST", "/api/workspaces", async ({ db, body }) => {
+    const { name, contextTitle, contextContent, primaryGroup, template } = await body();
+    return created(createWorkspace(db, { name, contextTitle, contextContent, primaryGroup, template }));
+  }),
   route("POST", "/api/workspaces/import", async ({ db, body, query }) => created(importWorkspace(db, await body(50 * 1024 * 1024), { name: query.get("name") }))),
   route("GET", "/api/workspaces/:ws", ({ db, params, query }) => workspaceDetail(db, params.ws, { group: query.get("group"), question: query.get("question"), mode: query.get("mode") })),
   route("PATCH", "/api/workspaces/:ws", async ({ db, params, body }) => {
@@ -177,7 +184,8 @@ async function staticFile(response, pathname) {
     "Cache-Control": extension === ".woff2" ? "public, max-age=31536000, immutable" : "no-cache",
     ...securityHeaders, ...(extension === ".html" ? { "Content-Security-Policy": appPolicy } : {}),
   });
-  createReadStream(candidate).pipe(response);
+  // pipeline closes the file when the client disconnects early.
+  pipeline(createReadStream(candidate), response, () => {});
   return true;
 }
 
@@ -224,7 +232,8 @@ export function startServer({ port = 4317, host = "127.0.0.1", db = null, dbPath
       else if (!(await staticFile(response, url.pathname)) && !(await staticFile(response, "/"))) send(response, 404, { error: "UI assets not found." });
     } catch (error) {
       const constraint = /constraint failed/i.test(error?.message || "");
-      if (!response.headersSent) send(response, error.status || (constraint ? 409 : 500), { error: error.message || String(error), runId: error.runId || null, runIds: error.runIds || null });
+      const status = error.status || (error instanceof URIError ? 400 : constraint ? 409 : 500);
+      if (!response.headersSent) send(response, status, { error: error instanceof URIError ? "The address is not valid." : error.message || String(error), runId: error.runId || null, runIds: error.runIds || null });
       else response.end();
     }
   });

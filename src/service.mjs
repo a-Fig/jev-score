@@ -99,16 +99,20 @@ export function createGroup(db, { name, description = "", questions, scorerSourc
   const items = Array.isArray(questions) && questions.length ? questions : starter?.questions;
   if (!Array.isArray(items) || !items.length) throw fail("At least one question is required.");
   const cleanQuestions = uniqueKeys(items);
+  const groupId = inTransaction(db, () => insertGroup(db, { name: groupName, description: description || starter?.description || "", questions: cleanQuestions, scorerSource }));
+  return resolveGroup(db, groupId);
+}
+
+// Inserts a validated group; callers own the transaction.
+function insertGroup(db, { name, description, questions, scorerSource }) {
   const groupId = id("grp");
   const timestamp = now();
   const source = scorerSource ? String(scorerSource) : null;
-  inTransaction(db, () => {
-    db.prepare(`INSERT INTO evaluation_groups (id,name,description,scorer_kind,scorer_source,scorer_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
-      .run(groupId, groupName, String(description || starter?.description || ""), source ? "javascript-v1" : "mean-v1", source, source ? hash(source) : null, timestamp, timestamp);
-    const insert = db.prepare(`INSERT INTO evaluation_questions (id,group_id,question_key,text,direction,position) VALUES (?,?,?,?,?,?)`);
-    cleanQuestions.forEach((question, index) => insert.run(id("q"), groupId, question.key, question.text, question.direction, index));
-  });
-  return resolveGroup(db, groupId);
+  db.prepare(`INSERT INTO evaluation_groups (id,name,description,scorer_kind,scorer_source,scorer_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
+    .run(groupId, name, String(description || ""), source ? "javascript-v1" : "mean-v1", source, source ? hash(source) : null, timestamp, timestamp);
+  const insert = db.prepare(`INSERT INTO evaluation_questions (id,group_id,question_key,text,direction,position) VALUES (?,?,?,?,?,?)`);
+  questions.forEach((question, index) => insert.run(id("q"), groupId, question.key, question.text, question.direction, index));
+  return groupId;
 }
 
 // Names and descriptions can always change. Questions only change before the
@@ -121,6 +125,7 @@ export function updateGroup(db, reference, { name, description, questions } = {}
   }
   if (questions !== undefined) {
     if (group.locked) throw fail(`“${group.name}” has evaluation runs, so its questions are locked. Fork it to change the questions.`, 409);
+    if (db.prepare(`SELECT 1 FROM evaluation_activity WHERE group_id = ?`).get(group.id)) throw fail(`“${group.name}” is being used to score a draft right now. Try again when scoring finishes.`, 409);
     if (!Array.isArray(questions) || !questions.length) throw fail("At least one question is required.");
   }
   inTransaction(db, () => {
@@ -194,20 +199,25 @@ function saveContextVersion(db, workspaceId, { title, content, hash: contextHash
   else db.prepare(`INSERT INTO workspace_contexts (id,workspace_id,content_hash,title,content,created_at,activated_at) VALUES (?,?,?,?,?,?,?)`).run(id("ctx"), workspaceId, contextHash, title, content, timestamp, timestamp);
 }
 
-export function createWorkspace(db, { name, contextTitle = "Context", contextContent, primaryGroup = null }) {
+// With `template`, the starter group is created in the same transaction, so a
+// workspace that can't be created never leaves an orphan group behind.
+export function createWorkspace(db, { name, contextTitle = null, contextContent, primaryGroup = null, template = null }) {
   if (typeof name !== "string" || !name.trim()) throw fail("Workspace name is required.");
   if (typeof contextContent !== "string" || !contextContent.trim()) throw fail("Workspace context is required.");
   if (exists(db, "workspaces", name)) throw fail(`A workspace named “${name.trim()}” already exists.`, 409);
+  const starter = template && !primaryGroup ? findTemplate(template) : null;
+  if (template && !primaryGroup && !starter) throw fail(`Template not found: ${template}. Run jev-score group templates.`, 404);
   const group = primaryGroup ? resolveGroup(db, primaryGroup) : null;
   const workspaceId = id("ws");
   const timestamp = now();
   const content = normalize(contextContent);
-  const title = String(contextTitle || "Context").trim() || "Context";
+  const title = String(contextTitle || starter?.contextTitle || "Context").trim() || "Context";
   inTransaction(db, () => {
+    const groupId = group?.id || (starter ? insertGroup(db, { name: uniqueName(db, "evaluation_groups", starter.name), description: starter.description, questions: uniqueKeys(starter.questions), scorerSource: null }) : null);
     db.prepare(`INSERT INTO workspaces (id,name,context_title,context_content,context_hash,primary_group_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
-      .run(workspaceId, name.trim(), title, content, hash(content), group?.id || null, timestamp, timestamp);
+      .run(workspaceId, name.trim(), title, content, hash(content), groupId, timestamp, timestamp);
     saveContextVersion(db, workspaceId, { title, content, hash: hash(content), timestamp });
-    if (group) db.prepare(`INSERT INTO workspace_groups (workspace_id,group_id,attached_at) VALUES (?,?,?)`).run(workspaceId, group.id, timestamp);
+    if (groupId) db.prepare(`INSERT INTO workspace_groups (workspace_id,group_id,attached_at) VALUES (?,?,?)`).run(workspaceId, groupId, timestamp);
   });
   return resolveWorkspace(db, workspaceId);
 }
@@ -407,19 +417,34 @@ export async function evaluateDocument(db, workspaceRef, documentRef, { group: g
   const workspace = resolveWorkspace(db, workspaceRef);
   const document = resolveDocument(db, workspace.id, documentRef);
   const group = resolveGroup(db, groupRef || workspace.primaryGroupId || "");
+  // Validate everything that is stored with the run before paying for the call.
+  let metadataJson;
+  try { metadataJson = JSON.stringify(json(metadata)); } catch { throw fail("Metadata must be a JSON object."); }
   if (evaluate === evaluateWithJev && !process.env.OPENROUTER_API_KEY) throw fail("OPENROUTER_API_KEY is required to run an evaluation. Put it in .env.local or your shell, then run jev-score doctor.");
   const spend = spendStatus(db);
   if (spend.exceeded) throw fail(`Spend limit reached: $${spend.spent.toFixed(4)} recorded against a $${spend.limit.toFixed(2)} limit. Raise it with jev-score config spend-limit <usd> or in Settings.`, 402);
   db.prepare(`INSERT OR IGNORE INTO workspace_groups VALUES (?,?,?)`).run(workspace.id, group.id, now());
   const runId = id("run");
   db.prepare(`INSERT INTO evaluation_activity (id,workspace_id,document_id,group_id,source,started_at) VALUES (?,?,?,?,?,?)`).run(runId, workspace.id, document.id, group.id, source, now());
+  // Spend goes to the ledger on its own, so it counts toward the limit even
+  // when the run can't be stored (for example, the draft was deleted mid-call).
+  const recordSpend = (usage, model, provider, timestamp) => {
+    const numbers = usageNumbers(usage);
+    if (numbers) db.prepare(`INSERT OR IGNORE INTO usage_ledger (run_id,workspace_id,model,provider,input_tokens,output_tokens,total_tokens,cost,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run(runId, workspace.id, model || null, provider || null, numbers.input, numbers.output, numbers.total, numbers.cost, timestamp);
+  };
+  const lostRun = (error) => /FOREIGN KEY constraint failed/i.test(error?.message || "") ? fail("The draft, workspace, or evaluation group changed while it was being scored, so this run was not saved. Its cost was recorded.", 409) : error;
   try {
     let result;
     try {
       result = await evaluate({ document: document.content, context: workspace.contextContent, questions: group.questions });
     } catch (error) {
-      db.prepare(`INSERT INTO evaluation_runs (id,workspace_id,document_id,group_id,status,note,metadata_json,error,context_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`)
-        .run(runId, workspace.id, document.id, group.id, "jev_error", String(note || ""), JSON.stringify(json(metadata)), error.message, workspace.contextHash, now());
+      const timestamp = now();
+      recordSpend(error.usage, error.model, error.provider, timestamp);
+      try {
+        db.prepare(`INSERT INTO evaluation_runs (id,workspace_id,document_id,group_id,status,model,provider,note,metadata_json,usage_json,error,context_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(runId, workspace.id, document.id, group.id, "jev_error", error.model || null, error.provider || null, String(note || ""), metadataJson, error.usage ? JSON.stringify(error.usage) : null, error.message, workspace.contextHash, timestamp);
+      } catch {}
       error.runId = runId;
       throw error;
     }
@@ -427,16 +452,16 @@ export async function evaluateDocument(db, workspaceRef, documentRef, { group: g
     let aggregationError = null;
     try { overall = await aggregateScores(group, result.scores); }
     catch (error) { aggregationError = error.message; }
-    const usage = usageNumbers(result.usage);
-    inTransaction(db, () => {
-      const timestamp = now();
-      db.prepare(`INSERT INTO evaluation_runs (id,workspace_id,document_id,group_id,status,overall_score,model,provider,note,metadata_json,usage_json,aggregation_error,context_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(runId, workspace.id, document.id, group.id, aggregationError ? "aggregation_error" : "success", overall, result.model || null, result.provider || null, String(note || ""), JSON.stringify(json(metadata)), result.usage ? JSON.stringify(result.usage) : null, aggregationError, workspace.contextHash, timestamp);
-      const insert = db.prepare(`INSERT INTO evaluation_scores (run_id,question_id,raw_score,normalized_score,confidence,probabilities_json) VALUES (?,?,?,?,?,?)`);
-      result.scores.forEach((score) => insert.run(runId, score.questionId, score.rawScore, score.score, score.confidence, score.probabilities ? JSON.stringify(score.probabilities) : null));
-      if (usage) db.prepare(`INSERT OR IGNORE INTO usage_ledger (run_id,workspace_id,model,provider,input_tokens,output_tokens,total_tokens,cost,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
-        .run(runId, workspace.id, result.model || null, result.provider || null, usage.input, usage.output, usage.total, usage.cost, timestamp);
-    });
+    const timestamp = now();
+    recordSpend(result.usage, result.model, result.provider, timestamp);
+    try {
+      inTransaction(db, () => {
+        db.prepare(`INSERT INTO evaluation_runs (id,workspace_id,document_id,group_id,status,overall_score,model,provider,note,metadata_json,usage_json,aggregation_error,context_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(runId, workspace.id, document.id, group.id, aggregationError ? "aggregation_error" : "success", overall, result.model || null, result.provider || null, String(note || ""), metadataJson, result.usage ? JSON.stringify(result.usage) : null, aggregationError, workspace.contextHash, timestamp);
+        const insert = db.prepare(`INSERT INTO evaluation_scores (run_id,question_id,raw_score,normalized_score,confidence,probabilities_json) VALUES (?,?,?,?,?,?)`);
+        result.scores.forEach((score) => insert.run(runId, score.questionId, score.rawScore, score.score, score.confidence, score.probabilities ? JSON.stringify(score.probabilities) : null));
+      });
+    } catch (error) { throw lostRun(error); }
     return getRun(db, runId);
   } finally {
     db.prepare(`DELETE FROM evaluation_activity WHERE id=?`).run(runId);
@@ -465,7 +490,9 @@ export async function scoreDocument(db, workspaceRef, documentRef, { runs = 1, c
   const workspace = resolveWorkspace(db, workspaceRef);
   const document = resolveDocument(db, workspace.id, documentRef);
   const group = resolveGroup(db, options.group || workspace.primaryGroupId || "");
-  const results = await pool(count, Math.max(1, concurrency), () => evaluateDocument(db, workspace.id, document.id, { ...options, group: group.id }));
+  // With a spend limit, run one call at a time so the limit is checked between calls.
+  const parallel = spendStatus(db).limit != null ? 1 : Math.max(1, concurrency);
+  const results = await pool(count, parallel, () => evaluateDocument(db, workspace.id, document.id, { ...options, group: group.id }));
   const runIds = results.map((result) => result.value?.id || result.error?.runId).filter(Boolean);
   if (results.every((result) => result.error)) {
     const error = results[0].error;
@@ -575,13 +602,16 @@ export function ranking(db, workspaceRef, { group: groupRef = null, question = n
   items.forEach((item, index) => { item.rank = item.rankScore == null ? null : index + 1; item.isBest = item.id === best?.id; item.delta = item.rankScore == null || original?.rankScore == null ? null : improvement(item.rankScore, original.rankScore, lowerIsBetter ? "lower" : "higher"); });
   const originalBaseline = original?.rankScore ?? null;
   const change = (value) => originalBaseline == null ? null : improvement(value, originalBaseline, lowerIsBetter ? "lower" : "higher");
-  let frontier = -Infinity;
+  // Deltas are already "higher is better"; raw scores (no baseline) are not.
+  const better = (a, b) => originalBaseline == null && lowerIsBetter ? Math.min(a, b) : Math.max(a, b);
+  let frontier = null;
   const timeline = [...items]
     .filter((item) => item.rankScore != null)
     .sort((a, b) => a.version - b.version)
     .map((item) => {
       const delta = change(item.rankScore);
-      frontier = Math.max(frontier, delta ?? item.rankScore);
+      const value = delta ?? item.rankScore;
+      frontier = frontier == null ? value : better(frontier, value);
       return {
         documentId: item.id, documentVersion: item.version, documentTitle: item.title, parentDocumentId: item.parentDocumentId,
         runs: item.runs, score: item.rankScore, delta, minDelta: change(lowerIsBetter ? item.max : item.min), maxDelta: change(lowerIsBetter ? item.min : item.max), frontier: round(frontier),
@@ -715,7 +745,7 @@ export function exportWorkspace(db, workspaceRef, { appVersion = null } = {}) {
   const runs = db.prepare(`SELECT id FROM evaluation_runs WHERE workspace_id=? ORDER BY created_at`).all(workspace.id).map(({ id }) => getRun(db, id));
   return {
     format: BUNDLE_FORMAT, formatVersion: 1, exportedAt: now(), app: { name: "jev-score", version: appVersion },
-    workspace: { name: workspace.name, contextTitle: workspace.contextTitle, contextContent: workspace.contextContent, rankingMode: workspace.rankingMode, primaryGroup: workspace.primaryGroupId, groups: workspace.groups.map((group) => group.id), createdAt: workspace.createdAt },
+    workspace: { name: workspace.name, contextTitle: workspace.contextTitle, contextContent: workspace.contextContent, rankingMode: workspace.rankingMode, primaryGroup: workspace.primaryGroupId, groups: workspace.groups.map((group) => group.id), nextDocumentVersion: db.prepare(`SELECT next_document_version FROM workspaces WHERE id=?`).get(workspace.id).next_document_version, createdAt: workspace.createdAt },
     contexts: contextHistory(db, workspace.id).map(({ hash: contextHash, title, content, createdAt, activatedAt }) => ({ hash: contextHash, title, content, createdAt, activatedAt })),
     groups: groups.map((group) => ({ ref: group.id, name: group.name, description: group.description, scorerSource: group.scorerSource, questions: group.questions.map(({ key, text, direction }) => ({ key, text, direction })) })),
     documents: documents.map((document) => ({ ref: document.id, version: document.version, title: document.title, content: document.content, changeSummary: document.changeSummary, metadata: document.metadata, parent: document.parentDocumentId, isOriginal: document.isOriginal, createdAt: document.createdAt })),
@@ -725,24 +755,40 @@ export function exportWorkspace(db, workspaceRef, { appVersion = null } = {}) {
 
 const sameQuestions = (group, questions) => group.questions.length === questions.length && group.questions.every((question, index) => question.key === questions[index].key && question.text === questions[index].text && question.direction === (questions[index].direction || "higher"));
 
+const RUN_STATUSES = new Set(["success", "aggregation_error", "jev_error"]);
+
 export function importWorkspace(db, bundle, { name = null, allowScorer = false } = {}) {
   if (bundle?.format !== BUNDLE_FORMAT || bundle.formatVersion !== 1) throw fail("This file is not a Jev Score workspace export.");
   if (!Array.isArray(bundle.groups) || !Array.isArray(bundle.documents) || !Array.isArray(bundle.runs) || !bundle.workspace) throw fail("The workspace export is incomplete.");
+  // Validate everything first so a bad file changes nothing.
+  const isObject = (value) => value && typeof value === "object" && !Array.isArray(value);
+  if (![...bundle.groups, ...bundle.documents, ...bundle.runs].every(isObject) || !isObject(bundle.workspace)) throw fail("The workspace export is malformed.");
   if (!allowScorer && bundle.groups.some((group) => group.scorerSource)) throw fail("This export contains custom scorer code. Import it with the local CLI: jev-score workspace import <file>.");
-  // Reuse identical groups; otherwise create a copy under a free name.
-  const groupMap = new Map();
-  for (const group of bundle.groups) {
-    const match = listGroups(db).find((candidate) => candidate.name.toLowerCase() === String(group.name).toLowerCase() && sameQuestions(candidate, group.questions) && (candidate.scorerSource || null) === (group.scorerSource || null));
-    groupMap.set(group.ref, match || createGroup(db, { name: uniqueName(db, "evaluation_groups", group.name), description: group.description, questions: group.questions, scorerSource: group.scorerSource }));
-  }
-  const workspaceName = uniqueName(db, "workspaces", name || bundle.workspace.name);
-  const workspaceId = id("ws");
-  const timestamp = now();
-  const content = normalize(bundle.workspace.contextContent);
-  inTransaction(db, () => {
+  if (typeof bundle.workspace.contextContent !== "string" || !bundle.workspace.contextContent.trim()) throw fail("The workspace export has no context.");
+  const groups = bundle.groups.map((group, index) => {
+    if (typeof group.name !== "string" || !group.name.trim()) throw fail(`Evaluation group ${index + 1} in the export has no name.`);
+    return { ...group, questions: uniqueKeys(Array.isArray(group.questions) ? group.questions : []) };
+  });
+  if (groups.some((group) => !group.questions.length)) throw fail("An evaluation group in the export has no questions.");
+  bundle.documents.forEach((document, index) => { if (typeof document.content !== "string" || !document.content.trim()) throw fail(`Draft ${index + 1} in the export has no text.`); });
+  bundle.runs.forEach((run, index) => { if (!RUN_STATUSES.has(run.status)) throw fail(`Run ${index + 1} in the export has an unknown status: ${run.status}.`); });
+  return inTransaction(db, () => {
+    // Reuse identical groups; otherwise create a copy under a free name.
+    const existing = listGroups(db);
+    const groupMap = new Map();
+    for (const group of groups) {
+      const match = existing.find((candidate) => candidate.name.toLowerCase() === group.name.trim().toLowerCase() && sameQuestions(candidate, group.questions) && (candidate.scorerSource || null) === (group.scorerSource || null));
+      const groupId = match?.id || insertGroup(db, { name: uniqueName(db, "evaluation_groups", group.name), description: group.description, questions: group.questions, scorerSource: group.scorerSource });
+      groupMap.set(group.ref, resolveGroup(db, groupId));
+    }
+    const workspaceName = uniqueName(db, "workspaces", name || bundle.workspace.name || "Imported workspace");
+    const workspaceId = id("ws");
+    const timestamp = now();
+    const content = normalize(bundle.workspace.contextContent);
     db.prepare(`INSERT INTO workspaces (id,name,context_title,context_content,context_hash,primary_group_id,ranking_mode,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`)
       .run(workspaceId, workspaceName, bundle.workspace.contextTitle || "Context", content, hash(content), groupMap.get(bundle.workspace.primaryGroup)?.id || null, RANKING_MODES.includes(bundle.workspace.rankingMode) ? bundle.workspace.rankingMode : "max", bundle.workspace.createdAt || timestamp, timestamp);
     for (const context of bundle.contexts || []) {
+      if (typeof context.content !== "string") continue;
       db.prepare(`INSERT OR IGNORE INTO workspace_contexts (id,workspace_id,content_hash,title,content,created_at,activated_at) VALUES (?,?,?,?,?,?,?)`).run(id("ctx"), workspaceId, hash(normalize(context.content)), context.title || "Context", normalize(context.content), context.createdAt || timestamp, context.activatedAt || timestamp);
     }
     saveContextVersion(db, workspaceId, { title: bundle.workspace.contextTitle || "Context", content, hash: hash(content), timestamp });
@@ -750,15 +796,24 @@ export function importWorkspace(db, bundle, { name = null, allowScorer = false }
       if (groupMap.has(groupRef)) db.prepare(`INSERT OR IGNORE INTO workspace_groups VALUES (?,?,?)`).run(workspaceId, groupMap.get(groupRef).id, timestamp);
     }
     const documentMap = new Map();
+    const usedVersions = new Set();
+    let hasOriginal = false;
     for (const document of bundle.documents) {
-      const documentId = id("doc");
       const documentContent = normalize(document.content);
       if ([...documentMap.values()].some((item) => item.hash === hash(documentContent))) continue;
+      let version = Number.isInteger(document.version) && document.version >= 0 && !usedVersions.has(document.version) ? document.version : null;
+      if (version == null) { version = 0; while (usedVersions.has(version)) version += 1; }
+      usedVersions.add(version);
+      const original = Boolean(document.isOriginal) && !hasOriginal;
+      hasOriginal ||= original;
+      const documentId = id("doc");
       documentMap.set(document.ref, { id: documentId, hash: hash(documentContent), parent: document.parent });
       db.prepare(`INSERT INTO documents (id,workspace_id,content_hash,content,title,change_summary,metadata_json,is_original,version,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`)
-        .run(documentId, workspaceId, hash(documentContent), documentContent, document.title || "Untitled", document.changeSummary || "", JSON.stringify(document.metadata || {}), document.isOriginal ? 1 : 0, Number.isInteger(document.version) ? document.version : documentMap.size - 1, document.createdAt || timestamp);
+        .run(documentId, workspaceId, hash(documentContent), documentContent, String(document.title || "Untitled"), String(document.changeSummary || ""), JSON.stringify(document.metadata || {}), original ? 1 : 0, version, document.createdAt || timestamp);
     }
-    db.prepare(`UPDATE workspaces SET next_document_version=(SELECT coalesce(max(version), -1) + 1 FROM documents WHERE workspace_id=?) WHERE id=?`).run(workspaceId, workspaceId);
+    // Keep the source's counter so numbers deleted there stay retired here.
+    const nextVersion = Math.max(usedVersions.size ? Math.max(...usedVersions) + 1 : 0, Number.isInteger(bundle.workspace.nextDocumentVersion) ? bundle.workspace.nextDocumentVersion : 0);
+    db.prepare(`UPDATE workspaces SET next_document_version=? WHERE id=?`).run(nextVersion, workspaceId);
     for (const item of documentMap.values()) {
       if (item.parent && documentMap.has(item.parent)) db.prepare(`UPDATE documents SET parent_document_id=? WHERE id=?`).run(documentMap.get(item.parent).id, item.id);
     }
@@ -768,13 +823,13 @@ export function importWorkspace(db, bundle, { name = null, allowScorer = false }
       if (!document || !group) continue;
       const runId = id("run");
       db.prepare(`INSERT INTO evaluation_runs (id,workspace_id,document_id,group_id,status,overall_score,model,provider,note,metadata_json,usage_json,aggregation_error,error,context_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(runId, workspaceId, document.id, group.id, run.status, run.overallScore ?? null, run.model ?? null, run.provider ?? null, run.note || "", JSON.stringify(run.metadata || {}), run.usage ? JSON.stringify(run.usage) : null, run.aggregationError ?? null, run.error ?? null, run.contextHash ?? hash(content), run.createdAt || timestamp);
+        .run(runId, workspaceId, document.id, group.id, run.status, Number.isFinite(run.overallScore) ? run.overallScore : null, run.model ?? null, run.provider ?? null, String(run.note || ""), JSON.stringify(run.metadata || {}), run.usage ? JSON.stringify(run.usage) : null, run.aggregationError ?? null, run.error ?? null, run.contextHash ?? hash(content), run.createdAt || timestamp);
       const questions = new Map(group.questions.map((question) => [question.key, question.id]));
       const insert = db.prepare(`INSERT OR IGNORE INTO evaluation_scores (run_id,question_id,raw_score,normalized_score,confidence,probabilities_json) VALUES (?,?,?,?,?,?)`);
-      for (const score of run.scores || []) if (questions.has(score.key)) insert.run(runId, questions.get(score.key), score.rawScore, score.score, score.confidence ?? null, score.probabilities ? JSON.stringify(score.probabilities) : null);
+      for (const score of run.scores || []) if (questions.has(score.key) && Number.isFinite(score.rawScore) && Number.isFinite(score.score)) insert.run(runId, questions.get(score.key), score.rawScore, score.score, score.confidence ?? null, score.probabilities ? JSON.stringify(score.probabilities) : null);
     }
+    return workspaceFromRow(db, db.prepare(`SELECT * FROM workspaces WHERE id=?`).get(workspaceId));
   });
-  return resolveWorkspace(db, workspaceId);
 }
 
 export function matrixCsv(db, workspaceRef, options = {}) {

@@ -63,10 +63,11 @@ export async function newWorkspaceDialog(app, navigate) {
     },
     async onSubmit(form) {
       const choice = String(form.get("group") || "");
-      let primaryGroup = null;
-      if (choice.startsWith("template:")) primaryGroup = (await api("/api/groups", { method: "POST", body: { template: choice.slice(9) } })).id;
-      if (choice.startsWith("group:")) primaryGroup = choice.slice(6);
-      const workspace = await api("/api/workspaces", { method: "POST", body: { name: form.get("name"), contextTitle: form.get("contextTitle") || "Context", contextContent: form.get("contextContent"), primaryGroup } });
+      const workspace = await api("/api/workspaces", { method: "POST", body: {
+        name: form.get("name"), contextTitle: form.get("contextTitle") || "Context", contextContent: form.get("contextContent"),
+        primaryGroup: choice.startsWith("group:") ? choice.slice(6) : null,
+        template: choice.startsWith("template:") ? choice.slice(9) : null,
+      } });
       const draft = String(form.get("draftContent") || "");
       if (draft.trim()) await api(`${ws(workspace.id)}/documents`, { method: "POST", body: { content: draft, title: String(form.get("draftTitle") || "").trim() || "Original", original: true } });
       navigate(`/w/${encodeURIComponent(workspace.id)}`);

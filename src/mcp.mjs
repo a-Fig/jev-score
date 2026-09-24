@@ -1,8 +1,8 @@
 import { createInterface } from "node:readline";
 import { openDatabase } from "./db.mjs";
 import {
-  addDocument, createGroup, createWorkspace, documentDetail, listGroups, ranking, resolveWorkspace,
-  scoreDocument, workspaceDetail, workspaceSummary, listWorkspaces,
+  addDocument, createGroup, createWorkspace, documentDetail, listGroups, listWorkspaces, ranking,
+  scoreDocument, workspaceDetail, workspaceSummary,
 } from "./service.mjs";
 import { TEMPLATES } from "./templates.mjs";
 
@@ -156,12 +156,7 @@ const TOOLS = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
-    run: (db, input) => {
-      const group = input.group || (input.template ? createGroup(db, { template: input.template }).id : null);
-      const starter = input.template ? TEMPLATES.find((item) => item.id === input.template) : null;
-      const workspace = createWorkspace(db, { name: input.name, contextContent: input.context, contextTitle: input.context_title || starter?.contextTitle || "Context", primaryGroup: group });
-      return resolveWorkspace(db, workspace.id);
-    },
+    run: (db, input) => createWorkspace(db, { name: input.name, contextContent: input.context, contextTitle: input.context_title, primaryGroup: input.group, template: input.template }),
   },
 ];
 
@@ -169,8 +164,9 @@ const publicTool = ({ run, ...tool }) => tool;
 
 export function createMcpHandler(db, { version = null, evaluate = null } = {}) {
   return async function handle(message) {
-    if (message?.jsonrpc !== "2.0" || typeof message.method !== "string") {
-      return message?.id !== undefined ? { jsonrpc: "2.0", id: message.id ?? null, error: { code: -32600, message: "Invalid request" } } : null;
+    if (!message || typeof message !== "object" || Array.isArray(message) || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
+      const id = message && typeof message === "object" && ["string", "number"].includes(typeof message.id) ? message.id : null;
+      return { jsonrpc: "2.0", id, error: { code: -32600, message: "Invalid request" } };
     }
     const reply = (result) => message.id === undefined ? null : { jsonrpc: "2.0", id: message.id, result };
     const failure = (code, text) => message.id === undefined ? null : { jsonrpc: "2.0", id: message.id, error: { code, message: text } };
@@ -197,7 +193,7 @@ export function createMcpHandler(db, { version = null, evaluate = null } = {}) {
         }
       }
       default:
-        if (message.method.startsWith("notifications/")) return null;
+        // Notifications never get a reply; a request always does.
         return failure(-32601, `Method not found: ${message.method}`);
     }
   };
@@ -216,7 +212,7 @@ export function runMcpServer({ db = openDatabase(), version = null, evaluate = n
     try { message = JSON.parse(line); }
     catch { write({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }); return; }
     const task = (Array.isArray(message)
-      ? Promise.all(message.map(handle)).then((replies) => { const answered = replies.filter(Boolean); if (answered.length) write(answered); })
+      ? (message.length ? Promise.all(message.map(handle)).then((replies) => { const answered = replies.filter(Boolean); if (answered.length) write(answered); }) : Promise.resolve(write({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid request" } })))
       : handle(message).then(write))
       .catch((error) => write({ jsonrpc: "2.0", id: message?.id ?? null, error: { code: -32603, message: error?.message || String(error) } }))
       .finally(() => pending.delete(task));

@@ -176,7 +176,19 @@ function migrate(db) {
     if (!columns(db, "workspaces").has("context_hash")) db.exec("ALTER TABLE workspaces ADD COLUMN context_hash TEXT");
     if (!columns(db, "workspaces").has("next_document_version")) db.exec("ALTER TABLE workspaces ADD COLUMN next_document_version INTEGER NOT NULL DEFAULT 0");
     if (!columns(db, "evaluation_runs").has("context_hash")) db.exec("ALTER TABLE evaluation_runs ADD COLUMN context_hash TEXT");
-    db.exec(`UPDATE documents SET version = (SELECT n FROM (SELECT id, row_number() OVER (PARTITION BY workspace_id ORDER BY rowid) - 1 n FROM documents) numbered WHERE numbered.id = documents.id) WHERE version IS NULL`);
+    // Drafts without a number (from a 1.x database, or written by a 1.x server
+    // that is still running) are numbered after every number already used.
+    const unnumbered = db.prepare("SELECT id, workspace_id FROM documents WHERE version IS NULL ORDER BY rowid").all();
+    if (unnumbered.length) {
+      const start = db.prepare("SELECT max(coalesce((SELECT max(version) + 1 FROM documents WHERE workspace_id = ?), 0), coalesce((SELECT next_document_version FROM workspaces WHERE id = ?), 0)) next");
+      const assign = db.prepare("UPDATE documents SET version = ? WHERE id = ?");
+      const next = new Map();
+      for (const row of unnumbered) {
+        if (!next.has(row.workspace_id)) next.set(row.workspace_id, start.get(row.workspace_id, row.workspace_id).next);
+        assign.run(next.get(row.workspace_id), row.id);
+        next.set(row.workspace_id, next.get(row.workspace_id) + 1);
+      }
+    }
     db.exec("CREATE UNIQUE INDEX IF NOT EXISTS unique_document_version ON documents(workspace_id, version)");
     // Version numbers are never reused, even after the newest draft is deleted.
     db.exec("UPDATE workspaces SET next_document_version = (SELECT coalesce(max(version), -1) + 1 FROM documents WHERE workspace_id = workspaces.id) WHERE next_document_version < (SELECT coalesce(max(version), -1) + 1 FROM documents WHERE workspace_id = workspaces.id)");
