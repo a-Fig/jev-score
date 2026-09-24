@@ -14,7 +14,7 @@ export function weakestKeys(questions, scores, count = 3) {
 }
 
 export function marginHtml({ title = "Margin notes", subtitle = "", questions = [], current = null, baseline = null, baselineLabel = "", best = null, original = null, empty = "" }) {
-  if (!questions.length) return `<aside class="margin" aria-label="Scores"><div class="margin-head"><h2>${e(title)}</h2></div><div class="margin-empty">${empty || "Attach an evaluation group to see scores here."}</div></aside>`;
+  if (!questions.length) return `<aside class="margin" aria-label="Scores" tabindex="0"><div class="margin-head"><h2>${e(title)}</h2></div><div class="margin-empty">${empty || "Attach an evaluation group to see scores here."}</div></aside>`;
   const scores = current?.scores || null;
   const hasScores = scores && Object.values(scores).some((value) => value != null);
   const weak = hasScores ? weakestKeys(questions, scores) : new Set();
@@ -23,7 +23,7 @@ export function marginHtml({ title = "Margin notes", subtitle = "", questions = 
     best && current?.overallScore != null && best.overallScore != null ? `<span>${deltaHtml(improvement(current.overallScore, best.overallScore))} vs best ${e(versionLabel(best))}</span>` : "",
     original && current?.overallScore != null && original.overallScore != null ? `<span>${deltaHtml(improvement(current.overallScore, original.overallScore))} vs original</span>` : "",
   ].filter(Boolean).join("");
-  return `<aside class="margin" aria-label="Scores">
+  return `<aside class="margin" aria-label="Scores" tabindex="0">
     <div class="margin-head"><h2>${e(title)}</h2>${subtitle ? `<span class="faint">${e(subtitle)}</span>` : ""}</div>
     ${hasScores ? `<div class="margin-overall"><span class="label">Overall</span><span></span><strong>${score(current.overallScore)}</strong><span></span>${deltaLine ? `<div class="deltas">${deltaLine}</div>` : ""}</div>` : `<div class="margin-empty">${empty || "Not scored yet."}</div>`}
     ${questions.map((question) => {
