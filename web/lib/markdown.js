@@ -33,7 +33,9 @@ export function markdownInline(value) {
   output = output.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>");
   output = output.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, "$1<em>$2</em>");
   output = output.replace(/~~([^~]+)~~/g, "<del>$1</del>");
-  return output.replace(/\u0000(\d+)\u0000/g, (_, index) => tokens[Number(index)]);
+  // Stashed pieces can contain other stashed pieces, such as code in a link label.
+  for (let depth = 0; depth < 4 && output.includes("\u0000"); depth += 1) output = output.replace(/\u0000(\d+)\u0000/g, (_, index) => tokens[Number(index)]);
+  return output;
 }
 
 const tableRow = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
@@ -66,10 +68,12 @@ export function markdownToHtml(markdown) {
     const quoteLine = line.match(/^\s*>\s?(.*)$/);
     if (quoteLine) { flushParagraph(); closeLists(); quote ||= { line: number, text: [] }; quote.text.push(quoteLine[1]); continue; }
     flushQuote();
-    const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    // A closing run of # needs a space before it, so "C#" survives.
+    const heading = line.match(/^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/);
     if (heading) { flush(); output.push(`<h${heading[1].length} data-line="${number}">${markdownInline(heading[2])}</h${heading[1].length}>`); continue; }
     if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) { flush(); output.push(`<hr data-line="${number}">`); continue; }
-    if (line.includes("|") && isTableDivider(lines[index + 1] || "")) {
+    const divider = lines[index + 1] || "";
+    if (line.includes("|") && divider.includes("|") && isTableDivider(divider) && tableRow(divider).length === tableRow(line).length) {
       flush();
       const head = tableRow(line);
       const align = tableRow(lines[index + 1]).map((cell) => cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : "");

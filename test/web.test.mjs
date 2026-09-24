@@ -17,6 +17,9 @@ test("markdown renders common structure and never passes raw HTML or script URLs
   assert.doesNotMatch(html, /src="data:/);
   assert.match(html, /<a href="https:\/\/example.com" target="_blank" rel="noreferrer noopener">good<\/a>/);
   assert.doesNotMatch(markdownToHtml("snake_case_name stays"), /<em>/);
+  assert.match(markdownToHtml("## Senior engineer, C#"), />Senior engineer, C#</);
+  assert.match(markdownToHtml("[`npm i`](https://example.com)"), /<a [^>]+><code>npm i<\/code><\/a>/);
+  assert.doesNotMatch(markdownToHtml("a | b\n---"), /<table>/);
 });
 
 test("diffs pair rewritten lines and mark word-level changes", () => {

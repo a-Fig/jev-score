@@ -115,16 +115,18 @@ export async function renameWorkspaceDialog(workspace) {
 
 export async function manageGroupsDialog(detail, app) {
   const attached = new Set(detail.groups.map((group) => group.id));
-  const rows = app.dashboard.groups.map((group) => `<label class="check-row" style="justify-content:space-between;border:1px solid var(--rule);border-radius:8px;padding:10px 12px"><span class="row" style="gap:10px"><input type="checkbox" name="group" value="${e(group.id)}" ${attached.has(group.id) ? "checked" : ""}> <span><strong>${e(group.name)}</strong><br><span class="faint" style="font-weight:400;font-size:12.5px">${plural(group.questions.length, "question")}</span></span></span><span class="row" style="gap:6px;font-weight:400;font-size:12.5px"><input type="radio" name="primary" value="${e(group.id)}" ${detail.workspace.primaryGroupId === group.id ? "checked" : ""}> Primary</span></label>`).join("");
+  const rows = app.dashboard.groups.map((group) => `<div class="row" style="justify-content:space-between;border:1px solid var(--rule);border-radius:8px;padding:10px 12px"><label class="check-row" style="gap:10px"><input type="checkbox" name="group" value="${e(group.id)}" ${attached.has(group.id) ? "checked" : ""}> <span><strong>${e(group.name)}</strong><br><span class="faint" style="font-weight:400;font-size:12.5px">${plural(group.questions.length, "question")}</span></span></label><label class="check-row" style="gap:6px;font-weight:400;font-size:12.5px"><input type="radio" name="primary" value="${e(group.id)}" ${detail.workspace.primaryGroupId === group.id ? "checked" : ""}> Primary</label></div>`).join("");
   return modal({
     title: "Evaluation groups for this workspace",
     subtitle: "Attach any group to score drafts with it. The primary group drives rankings and charts.",
     body: rows ? `<div class="stack" style="gap:8px">${rows}</div>` : `<p class="muted">No evaluation groups yet. Create one from Evaluation groups.</p>`,
     actions: [{ label: "Cancel", kind: "quiet", value: null }, { label: "Save", kind: "primary", submit: true }],
     async onSubmit(form) {
+      // Unchecking a group detaches it, even the primary one; the radio only
+      // counts for a group that stays attached.
       const chosen = new Set(form.getAll("group"));
-      const primary = form.get("primary");
-      if (primary) chosen.add(primary);
+      const picked = form.get("primary");
+      const primary = picked && chosen.has(picked) ? picked : null;
       for (const id of chosen) if (!attached.has(id)) await api(`${ws(detail.workspace.id)}/groups`, { method: "POST", body: { group: id } });
       if (primary && primary !== detail.workspace.primaryGroupId) await api(ws(detail.workspace.id), { method: "PATCH", body: { primaryGroup: primary } });
       for (const id of attached) if (!chosen.has(id)) await api(`${ws(detail.workspace.id)}/groups/${encodeURIComponent(id)}`, { method: "DELETE" });

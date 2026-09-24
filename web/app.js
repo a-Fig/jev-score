@@ -221,6 +221,8 @@ $("#open-nav").innerHTML = icons.menu;
 $("#open-palette-mobile").innerHTML = icons.search;
 
 const liveRefresh = debounce(async () => {
+  // Re-rendering would close an open menu or pull a view out from under a dialog.
+  if ($("details.menu[open]") || $("#modal").open || $("#palette").open) { pendingRefresh = true; return; }
   const active = document.activeElement;
   if (active && main.contains(active) && active.matches("input, textarea, select") && !app.controller?.refreshWhileTyping) {
     pendingRefresh = true;
@@ -232,6 +234,8 @@ const liveRefresh = debounce(async () => {
 }, 250);
 
 main.addEventListener("focusout", () => { if (pendingRefresh) setTimeout(liveRefresh, 50); });
+document.addEventListener("toggle", (event) => { if (pendingRefresh && event.target.matches?.("details.menu") && !event.target.open) liveRefresh(); }, true);
+for (const id of ["#modal", "#palette"]) $(id).addEventListener("close", () => { if (pendingRefresh) setTimeout(liveRefresh, 50); });
 
 connectLive({
   onChange: () => liveRefresh(),

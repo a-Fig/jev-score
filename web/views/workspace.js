@@ -8,7 +8,7 @@ import { editContextDialog, manageGroupsDialog, renameWorkspaceDialog, uploadDia
 export async function mount(ctx) {
   const { root, params, query, app, navigate, setTitle, refreshShell } = ctx;
   const workspaceId = params.workspace;
-  const view = { tab: query.get("view") || storage.get("jev-docs-tab", "scores"), batch: null };
+  const view = { tab: query.get("view") || storage.get("jev-docs-tab", "scores"), batch: null, contextOpen: null };
   let detail = null;
 
   async function load() {
@@ -45,20 +45,19 @@ export async function mount(ctx) {
     if (!pending.length) return;
     view.batch = { done: 0, total: pending.length, failed: 0 };
     render();
+    // The batch keeps going if you leave the page; it only stops drawing.
     for (const document of pending) {
-      if (!ctx.isCurrent()) break;
       app.scoring.add(document.id);
       try { await api(`${doc(workspaceId, document.id)}/evaluate`, { method: "POST", body: { group: detail.ranking.group.id, runs: 1 } }); }
       catch (error) { view.batch.failed += 1; view.batch.error = error.message; if (error.status === 402) { app.scoring.delete(document.id); break; } }
       app.scoring.delete(document.id);
       view.batch.done += 1;
-      await load();
-      render();
+      if (ctx.isCurrent()) { await load(); if (ctx.isCurrent()) render(); }
     }
     const { done, failed, error } = view.batch;
     view.batch = null;
     toast(failed ? `${done - failed} scored, ${failed} failed: ${error}` : `Scored ${plural(done, "draft")}`, { error: failed > 0 });
-    await refresh();
+    if (ctx.isCurrent()) await refresh();
   }
 
   // --------------------------------------------------------------- tables
@@ -185,7 +184,7 @@ export async function mount(ctx) {
         <div id="chart"></div>
       </article>` : ""}
 
-      <details class="card context-card" ${documents.length ? "" : "open"}><summary><span class="title">${e(workspace.contextTitle)}</span><span class="preview">${e(workspace.contextContent.replace(/[#>*_`|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 180))}</span></summary>
+      <details class="card context-card" ${view.contextOpen ?? !documents.length ? "open" : ""}><summary><span class="title">${e(workspace.contextTitle)}</span><span class="preview">${e(workspace.contextContent.replace(/[#>*_`|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 180))}</span></summary>
         <div class="context-body"><div class="context-text">${e(workspace.contextContent)}</div><div class="row"><button class="btn small" id="edit-context-2">Edit context</button>${workspace.contextVersions > 1 ? `<span class="faint" style="font-size:12.5px">${plural(workspace.contextVersions, "version")} saved</span>` : ""}</div></div>
       </details>
 
@@ -207,6 +206,7 @@ export async function mount(ctx) {
 
   function wire() {
     const on = (selector, handler) => { const element = $(selector, root); if (element) element.onclick = handler; };
+    $(".context-card", root)?.addEventListener("toggle", (event) => { view.contextOpen = event.target.open; });
     on("#upload", () => uploadDialog(detail, navigate).then((saved) => saved && refresh()));
     on("#upload-2", () => uploadDialog(detail, navigate).then((saved) => saved && refresh()));
     on("#rename", async () => { const updated = await renameWorkspaceDialog(detail.workspace); if (updated) { await refreshShell(); await refresh(); } });

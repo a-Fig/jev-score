@@ -29,6 +29,7 @@ export function toast(message, { error = false, action = null, duration = error 
 // ------------------------------------------------------------------ dialogs
 
 let activeResolve = null;
+let modalToken = 0;
 
 // Opens the shared modal. `body` is trusted HTML built with escaped values.
 // Resolves with the clicked action's value (or the submit handler's result),
@@ -42,6 +43,7 @@ export function modal({ title, subtitle = "", body = "", actions = [], wide = fa
     ${body ? `<div class="body">${body}</div>` : ""}
     ${actions.length ? `<footer>${actions.map((action, index) => action === "spacer" ? `<span class="spacer"></span>` : `<button type="${action.submit ? "submit" : "button"}" class="btn ${action.kind || ""}" data-action="${index}" ${action.disabled ? "disabled" : ""}>${e(action.label)}</button>`).join("")}</footer>` : ""}
   </form>`;
+  const token = ++modalToken;
   return new Promise((resolve) => {
     activeResolve = resolve;
     let settled = false;
@@ -76,8 +78,12 @@ export function modal({ title, subtitle = "", body = "", actions = [], wide = fa
         if (submit.isConnected) { submit.disabled = false; submit.innerHTML = label; }
       }
     };
-    dialog.onclose = () => finish(null);
-    dialog.onclick = (event) => { if (event.target === dialog) finish(null); };
+    // A close event queued by the previous modal must not close this one.
+    dialog.onclose = () => { if (token === modalToken && !dialog.open) finish(null); };
+    // Close on a backdrop click only; a text selection dragged out of a field must not.
+    let pressedBackdrop = false;
+    dialog.onpointerdown = (event) => { pressedBackdrop = event.target === dialog; };
+    dialog.onclick = (event) => { if (event.target === dialog && pressedBackdrop) finish(null); pressedBackdrop = false; };
     dialog.showModal();
     onMount?.(dialog);
     const focusTarget = $("[autofocus]", dialog) || $("input:not([type=hidden]), textarea, select", dialog) || $("footer .btn:last-child", dialog);
@@ -90,13 +96,14 @@ export async function confirmAction({ title, message, confirmLabel = "Confirm", 
   return result === true;
 }
 
-export async function promptText({ title, label, value = "", confirmLabel = "Save", multiline = false, hint = "" }) {
-  const field = multiline ? `<textarea name="value" rows="10" required>${e(value)}</textarea>` : `<input name="value" value="${e(value)}" required autofocus>`;
+export async function promptText({ title, label, value = "", confirmLabel = "Save", multiline = false, hint = "", allowEmpty = false }) {
+  const required = allowEmpty ? "" : "required";
+  const field = multiline ? `<textarea name="value" rows="10" ${required}>${e(value)}</textarea>` : `<input name="value" value="${e(value)}" ${required} autofocus>`;
   const result = await modal({
     title,
     body: `<label class="field">${e(label)}${hint ? ` <span class="hint">${e(hint)}</span>` : ""}${field}</label>`,
     actions: [{ label: "Cancel", kind: "quiet", value: null }, { label: confirmLabel, kind: "primary", submit: true }],
-    onSubmit: (form) => String(form.get("value")).trim() || false,
+    onSubmit: (form) => { const text = String(form.get("value")).trim(); return allowEmpty ? text : text || false; },
   });
   return typeof result === "string" ? result : null;
 }

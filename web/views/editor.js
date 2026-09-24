@@ -68,7 +68,7 @@ export async function mount(ctx) {
             <button class="tool" data-prefix="- " title="Bulleted list" aria-label="Bulleted list">•</button>
             <button class="tool" data-prefix="1. " title="Numbered list" aria-label="Numbered list">1.</button>
             <button class="tool" data-prefix="> " title="Quote" aria-label="Quote">“</button>
-            <button class="tool" data-link title="Link" aria-label="Link">↗</button>
+            <button class="tool" data-insert-link title="Link" aria-label="Link">↗</button>
             <div class="seg" role="group" aria-label="View"><button data-view="write" aria-pressed="${mode === "write"}">Write</button><button data-view="preview" aria-pressed="${mode === "preview"}">Preview</button>${base ? `<button data-view="changes" aria-pressed="${mode === "changes"}">Changes</button>` : ""}</div>
           </div>
           <div class="sheet">
@@ -194,43 +194,63 @@ export async function mount(ctx) {
     return { text, from: start, to: end, selectFrom: start + label.length + 3, selectTo: start + text.length - 1 };
   });
 
+  // Re-renders the editor chrome while keeping the text, focus, and selection.
+  function rerender() {
+    const active = document.activeElement?.id;
+    const textarea = $("#writing", root);
+    const selection = textarea ? [textarea.selectionStart, textarea.selectionEnd] : null;
+    const scroll = window.scrollY;
+    renderShell();
+    const target = active && $(`#${active}`, root);
+    if (target) {
+      target.focus({ preventScroll: true });
+      if (active === "writing" && selection) target.setSelectionRange(...selection);
+    }
+    window.scrollTo(0, scroll);
+  }
+
   async function save(andScore) {
     if (busy) return;
-    const content = state.content;
+    const snapshot = { ...state };
+    const content = snapshot.content;
     if (!content.trim()) { toast("Write something first."); return; }
     if (base && content === base.content) { toast(`No changes from ${versionLabel(base)} yet.`); return; }
+    if (andScore && !detail.matrix) { toast("This workspace has no evaluation group yet, so the draft is saved without a score."); andScore = false; }
     busy = "saving";
     renderStatus();
     const previous = base;
     try {
       const savedDraft = await api(`${ws(workspaceId)}/documents`, { method: "POST", body: {
         content,
-        title: state.title.trim() || (previous ? `Revision of ${previous.title}` : detail.documents.length ? "Untitled draft" : "Original"),
-        changeSummary: state.summary.trim(),
+        title: snapshot.title.trim() || (previous ? `Revision of ${previous.title}` : detail.documents.length ? "Untitled draft" : "Original"),
+        changeSummary: snapshot.summary.trim(),
         parentDocument: previous?.id || null,
         original: !detail.documents.length,
       } });
       if (savedDraft.deduplicated) {
-        busy = null; renderStatus();
         toast(`This text matches ${versionTitle(savedDraft)}, so nothing new was saved.`, { action: { label: "Open it", onClick: () => navigate(href(`/d/${encodeURIComponent(savedDraft.id)}`)) } });
         return;
       }
       storage.remove(draftKey());
       lastSaved = savedDraft;
       base = await api(doc(workspaceId, savedDraft.id));
-      history.replaceState({}, "", href(`/edit/${encodeURIComponent(base.id)}`));
-      state.title = ""; state.summary = ""; state.content = base.content;
+      // Anything typed while saving becomes the start of the next draft.
+      if (state.title === snapshot.title) state.title = "";
+      if (state.summary === snapshot.summary) state.summary = "";
       restoredAt = null;
       await loadDetail();
+      if (!ctx.isCurrent()) return;
+      history.replaceState({}, "", href(`/edit/${encodeURIComponent(base.id)}`));
+      if (state.content !== base.content) persist();
       if (!andScore) {
         busy = null;
-        renderShell();
+        rerender();
         toast(`Saved ${versionTitle(savedDraft)}. Keep editing to write the next draft.`);
         return;
       }
       busy = "scoring";
-      renderShell();
-      const result = await api(`${doc(workspaceId, base.id)}/evaluate`, { method: "POST", body: { group: detail.matrix.group.id, runs: 1 } });
+      rerender();
+      const result = await api(`${doc(workspaceId, savedDraft.id)}/evaluate`, { method: "POST", body: { group: detail.matrix.group.id, runs: 1 } });
       const pieces = [`${versionLabel(savedDraft)} scored ${score(result.overallScore)}`];
       if (result.vsParent != null) pieces.push(`${result.vsParent >= 0 ? "+" : "−"}${Math.abs(result.vsParent).toFixed(1)} vs ${versionLabel(previous)}`);
       if (result.isBest) pieces.push("new best");
@@ -239,7 +259,7 @@ export async function mount(ctx) {
       toast(error.message, { error: true });
     } finally {
       busy = null;
-      if (ctx.isCurrent()) { await loadDetail().catch(() => {}); renderMargin(); renderStatus(); }
+      if (ctx.isCurrent()) { await loadDetail().catch(() => {}); if (ctx.isCurrent()) { renderMargin(); renderStatus(); } }
     }
   }
 
@@ -250,7 +270,7 @@ export async function mount(ctx) {
     $("#summary", root).addEventListener("input", (event) => { state.summary = event.target.value; persist(); });
     $$("[data-wrap]", root).forEach((button) => button.onclick = () => wrap(button.dataset.wrap));
     $$("[data-prefix]", root).forEach((button) => button.onclick = () => prefix(button.dataset.prefix));
-    $("[data-link]", root).onclick = link;
+    $("[data-insert-link]", root).onclick = link;
     $$("[data-view]", root).forEach((button) => button.onclick = () => {
       mode = button.dataset.view;
       storage.set("jev-editor-mode", mode);

@@ -61,7 +61,11 @@ export async function mount(ctx) {
     finally { app.scoring.delete(document.id); await refresh(); }
   }
 
+  // "Changes" is remembered across drafts, but the original has no parent.
+  const shownMode = () => mode === "changes" && !parent ? "rendered" : mode;
+
   function body() {
+    const mode = shownMode();
     if (mode === "source") return `<pre class="source">${e(document.content)}</pre>`;
     if (mode === "changes") return parent ? `<div class="changes">${changesHtml(parent.content, document.content, { expanded })}</div>` : `<p class="faint">This draft has no parent to compare against.</p>`;
     return `<div class="manuscript">${markdownToHtml(document.content)}</div>`;
@@ -106,7 +110,7 @@ export async function mount(ctx) {
       </div>
       <div class="doc-layout">
         <div>
-          <div class="row" style="margin-bottom:10px"><div class="seg" role="group" aria-label="Show"><button data-mode="rendered" aria-pressed="${mode === "rendered"}">Read</button><button data-mode="source" aria-pressed="${mode === "source"}">Source</button>${parent ? `<button data-mode="changes" aria-pressed="${mode === "changes"}">Changes</button>` : ""}</div>${mode === "changes" && parent ? `<span class="faint" style="font-size:12.5px">Struck through: removed from ${e(versionLabel(parent))}. Underlined: added.</span>` : ""}</div>
+          <div class="row" style="margin-bottom:10px"><div class="seg" role="group" aria-label="Show"><button data-mode="rendered" aria-pressed="${shownMode() === "rendered"}">Read</button><button data-mode="source" aria-pressed="${shownMode() === "source"}">Source</button>${parent ? `<button data-mode="changes" aria-pressed="${shownMode() === "changes"}">Changes</button>` : ""}</div>${shownMode() === "changes" ? `<span class="faint" style="font-size:12.5px">Struck through: removed from ${e(versionLabel(parent))}. Underlined: added.</span>` : ""}</div>
           <article class="sheet alone" style="padding:clamp(24px,5vw,60px) clamp(20px,5vw,68px)">${body()}</article>
         </div>
         ${marginHtml({
@@ -137,7 +141,7 @@ export async function mount(ctx) {
       if (title) { await api(doc(workspaceId, document.id), { method: "PATCH", body: { title } }); await refresh(); }
     });
     on("#edit-summary", async () => {
-      const changeSummary = await promptText({ title: "What changed?", label: "Summary", value: document.changeSummary, hint: "One line on how this draft differs from its parent." });
+      const changeSummary = await promptText({ title: "What changed?", label: "Summary", value: document.changeSummary, hint: "One line on how this draft differs from its parent.", allowEmpty: true });
       if (changeSummary != null) { await api(doc(workspaceId, document.id), { method: "PATCH", body: { changeSummary } }); await refresh(); }
     });
     on("#make-original", async () => {
