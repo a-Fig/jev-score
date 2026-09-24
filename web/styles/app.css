@@ -66,7 +66,8 @@ main { grid-column: 2; min-width: 0; padding: 40px clamp(20px, 4vw, 56px) 96px; 
 .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; flex: 0 0 auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-label.field, .field { display: grid; gap: 6px; font-weight: 600; font-size: 12.5px; color: var(--graphite); }
+label.field, .field { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-weight: 600; font-size: 12.5px; color: var(--graphite); }
+.field > input, .field > select, .field > textarea, .field > div, .field > ol, .field > .snippet { flex: 1 1 100%; min-width: 0; }
 .field .hint { font-weight: 400; color: var(--pencil); }
 .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
 input[type="text"], input[type="number"], input[type="search"], input:not([type]), select, textarea {
@@ -162,7 +163,7 @@ dialog[open] { animation: pop .18s var(--ease); }
 .modal > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 22px 24px 4px; }
 .modal > header h2 { font-size: 25px; }
 .modal > header p { color: var(--graphite); margin-top: 4px; }
-.modal .body { padding: 18px 24px; overflow-y: auto; display: grid; gap: 16px; }
+.modal .body { padding: 18px 24px; overflow-y: auto; display: grid; grid-auto-rows: max-content; align-content: start; gap: 16px; }
 .modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px 20px; border-top: 1px solid var(--rule); flex-wrap: wrap; }
 .modal > footer .spacer { flex: 1; }
 dialog.wide { max-width: min(980px, calc(100vw - 24px)); }

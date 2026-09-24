@@ -23,4 +23,4 @@ jev-score group create \
 
 Jev Score stores the source and SHA-256 hash with the group. It executes the function in a short-lived Node worker with a three-second timeout. This protects the app from accidental infinite loops; it is not a security sandbox, so only use scorer code you trust.
 
-Questions and scorer code become immutable after the group's first evaluation. If the scorer throws, times out, or returns an invalid value, the run keeps its individual Jev scores with an `aggregation_error` status and is excluded from overall rankings. Create a new group to change the formula.
+Questions and scorer code become immutable after the group's first scored run. Names and descriptions can still change. If the scorer throws, times out, or returns an invalid value, the run keeps its individual Jev scores with an `aggregation_error` status and is excluded from overall rankings. To change the formula afterwards, create a new group with `--scorer`. `jev-score group fork <group>` copies a group, scorer included, when only the questions need to change.
